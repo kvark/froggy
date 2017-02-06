@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 type RefCount = u16;
 
-pub struct StorageInner<T> {
+struct StorageInner<T> {
     data: Vec<T>,
     meta: Vec<RefCount>,
     free_list: Vec<usize>,
@@ -94,6 +94,7 @@ impl<T> Drop for Pointer<T> {
 }
 
 
+// Warning: this exposes deleted entries
 impl<'a, T> ops::Deref for ReadLock<'a, T> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
@@ -105,6 +106,21 @@ impl<'a, T> ReadLock<'a, T> {
     pub fn access(&self, ptr: &Pointer<T>) -> &T {
         debug_assert_eq!(&*self.storage as *const _, &*ptr.target as *const _);
         &self.guard.data[ptr.index]
+    }
+}
+
+// Warning: this exposes deleted entries
+impl<'a, T> ops::Deref for WriteLock<'a, T> {
+    type Target = [T];
+    fn deref(&self) -> &Self::Target {
+        &self.guard.data
+    }
+}
+
+// Warning: this exposes deleted entries
+impl<'a, T> ops::DerefMut for WriteLock<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.guard.data
     }
 }
 
@@ -126,7 +142,7 @@ impl<'a, T> WriteLock<'a, T> {
                 debug_assert_eq!(self.guard.data.len(), self.guard.meta.len());
                 self.guard.data.push(value);
                 self.guard.meta.push(1);
-                self.guard.data.len() - 1
+                self.guard.meta.len() - 1
             },
         };
         Pointer {
