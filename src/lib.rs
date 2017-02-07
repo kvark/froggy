@@ -10,25 +10,31 @@ struct StorageInner<T> {
     free_list: Vec<usize>,
 }
 
-type FreeListRef = Arc<Mutex<Vec<usize>>>;
+struct Pending {
+    add_ref: Vec<usize>,
+    sub_ref: Vec<usize>,
+}
+
 type StorageRef<T> = Arc<RwLock<StorageInner<T>>>;
-pub struct Storage<T>(StorageRef<T>, FreeListRef);
+type PendingRef = Arc<Mutex<Pending>>;
+pub struct Storage<T>(StorageRef<T>, PendingRef);
 
 pub struct Pointer<T> {
     index: usize,
     target: StorageRef<T>,
-    pending: FreeListRef,
+    pending: PendingRef,
 }
 
 pub struct ReadLock<'a, T: 'a> {
     guard: RwLockReadGuard<'a, StorageInner<T>>,
     storage: StorageRef<T>,
+    pending: PendingRef,
 }
 
 pub struct WriteLock<'a, T: 'a> {
     guard: RwLockWriteGuard<'a, StorageInner<T>>,
     storage: StorageRef<T>,
-    pending: FreeListRef,
+    pending: PendingRef,
 }
 
 
@@ -40,7 +46,10 @@ impl<T> Storage<T> {
             meta: Vec::new(),
             free_list: Vec::new(),
         };
-        let pending = Vec::new();
+        let pending = Pending {
+            add_ref: Vec::new(),
+            sub_ref: Vec::new(),
+        };
         Storage(Arc::new(RwLock::new(inner)), Arc::new(Mutex::new(pending)))
     }
 
@@ -48,14 +57,18 @@ impl<T> Storage<T> {
         ReadLock {
             guard: self.0.read().unwrap(),
             storage: self.0.clone(),
+            pending: self.1.clone(),
         }
     }
 
     pub fn write(&mut self) -> WriteLock<T> {
         let mut s = self.0.write().unwrap();
-        // process the pending frees
+        // process the pending refcount changes
         let mut pending = self.1.lock().unwrap();
-        for index in pending.drain(..) {
+        for index in pending.add_ref.drain(..) {
+            s.meta[index] += 1;
+        }
+        for index in pending.sub_ref.drain(..) {
             s.meta[index] -= 1;
             if s.meta[index] == 0 {
                 s.free_list.push(index);
@@ -89,7 +102,7 @@ impl<T> PartialEq for Pointer<T> {
 
 impl<T> Drop for Pointer<T> {
     fn drop(&mut self) {
-        self.pending.lock().unwrap().push(self.index);
+        self.pending.lock().unwrap().sub_ref.push(self.index);
     }
 }
 
@@ -106,6 +119,19 @@ impl<'a, T> ReadLock<'a, T> {
     pub fn access(&self, ptr: &Pointer<T>) -> &T {
         debug_assert_eq!(&*self.storage as *const _, &*ptr.target as *const _);
         &self.guard.data[ptr.index]
+    }
+
+    pub fn pin(&self, index: usize) -> Option<Pointer<T>> {
+        if index < self.guard.data.len() && self.guard.meta[index] != 0 {
+            self.pending.lock().unwrap().add_ref.push(index);
+            Some(Pointer {
+                index: index,
+                target: self.storage.clone(),
+                pending: self.pending.clone(),
+            })
+        } else {
+            None
+        }
     }
 }
 
