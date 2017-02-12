@@ -1,6 +1,14 @@
 [package]
 name = "froggy"
 version = "0.1.0"
-authors = ["kvark <kvark@mozilla.com>"]
+authors = ["Dzmitry Malyshau <kvarkus@gmail.com>"]
+documentation = "https://docs.rs/froggy/"
+repository = "https://github.com/kvark/froggy"
+keywords = ["gamedev", "ecs"]
+license = "Apache-2.0"
+exclude = ["doc", ".travis.yml"]
+description = """
+Froggy is a prototype for the Component Graph System programming model. It aims to combine the convenience of composition-style Object-Oriented Programming with the performance close to Entity-Component Systems.
+"""
 
 [dependencies]
