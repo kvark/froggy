@@ -39,18 +39,31 @@ pub struct WriteLock<'a, T: 'a> {
 
 
 impl<T> Storage<T> {
-    /// Create a new empty storage.
-    pub fn new() -> Storage<T> {
-        let inner = StorageInner {
-            data: Vec::new(),
-            meta: Vec::new(),
-            free_list: Vec::new(),
-        };
+    fn from_inner(inner: StorageInner<T>) -> Storage<T> {
         let pending = Pending {
             add_ref: Vec::new(),
             sub_ref: Vec::new(),
         };
-        Storage(Arc::new(RwLock::new(inner)), Arc::new(Mutex::new(pending)))
+        Storage(Arc::new(RwLock::new(inner)),
+                Arc::new(Mutex::new(pending)))
+    }
+
+    /// Create a new empty storage.
+    pub fn new() -> Storage<T> {
+        Self::from_inner(StorageInner {
+            data: Vec::new(),
+            meta: Vec::new(),
+            free_list: Vec::new(),
+        })
+    }
+
+    /// Create a new empty storage with specified capacity.
+    pub fn with_capacity(capacity: usize) -> Storage<T> {
+        Self::from_inner(StorageInner {
+            data: Vec::with_capacity(capacity),
+            meta: Vec::with_capacity(capacity),
+            free_list: Vec::new(),
+        })
     }
 
     pub fn read(&self) -> ReadLock<T> {
@@ -61,7 +74,7 @@ impl<T> Storage<T> {
         }
     }
 
-    pub fn write(&mut self) -> WriteLock<T> {
+    pub fn write(&self) -> WriteLock<T> {
         let mut s = self.0.write().unwrap();
         // process the pending refcount changes
         let mut pending = self.1.lock().unwrap();
