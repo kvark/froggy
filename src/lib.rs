@@ -1,36 +1,71 @@
+/*!
+Component Graph System prototype.
+
+Froggy is all about the smart component storage, unambiguously called `Storage`.
+Components inside it are automatically reference-counted, and could be referenced by a `Pointer`.
+The components are stored linearly, allowing for the efficient bulk data processing.
+`Storage` has to be locked temporarily for either read or write before any usage.
+
+You can find more information about Component Graph System concept on the [wiki](https://github.com/kvark/froggy/wiki/Component-Graph-System).
+Comparing to Entity-Component Systems (ECS), CGS doesn't have the backwards relation of components to entities.
+Thus, it can't process all "entities" by just selecting a subsect of compoments to work on, besides not having the whole "entity" concept.
+However, CGS has a number of advantages:
+
+  - you can share components naturally
+  - you don't need to care about the component lifetime, it is managed automatically
+  - you can have deeper hierarchies of components, with one component referencing the others
+  - you can have user structures referencing components freely
+  - there are no restrictions on the component types, and no need to implement any traits
+
+*/
+#![warn(missing_docs)]
+
 use std::ops;
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-
+/// Reference counter type. It doesn't make sense to allocate too much bit for it in regular applications.
+// TODO: control by a cargo feature
 type RefCount = u16;
 
+/// Inner storage data that is locked by `RwLock`.
 struct StorageInner<T> {
     data: Vec<T>,
     meta: Vec<RefCount>,
     free_list: Vec<usize>,
 }
 
+/// Pending reference counts updates.
 struct Pending {
     add_ref: Vec<usize>,
     sub_ref: Vec<usize>,
 }
 
+/// Shared pointer to the inner storage.
 type StorageRef<T> = Arc<RwLock<StorageInner<T>>>;
+/// Shared pointer to the pending updates.
 type PendingRef = Arc<Mutex<Pending>>;
+/// Component storage type.
+/// Manages the components and allows for efficient processing.
 pub struct Storage<T>(StorageRef<T>, PendingRef);
 
+/// A pointer to a component of type `T`.
+/// The component is guaranteed to be accessible for as long as this pointer is alive.
+/// You'd need a locked storage to access the data.
+/// The pointer also holds the storage alive and knows the index of the element to look up.
 pub struct Pointer<T> {
     index: usize,
     target: StorageRef<T>,
     pending: PendingRef,
 }
 
+/// Read lock on the storage, allows multiple clients to read from the same storage simultaneously.
 pub struct ReadLock<'a, T: 'a> {
     guard: RwLockReadGuard<'a, StorageInner<T>>,
     storage: StorageRef<T>,
     pending: PendingRef,
 }
 
+/// Write lock on the storage allows exclusive access.
 pub struct WriteLock<'a, T: 'a> {
     guard: RwLockWriteGuard<'a, StorageInner<T>>,
     storage: StorageRef<T>,
@@ -66,6 +101,7 @@ impl<T> Storage<T> {
         })
     }
 
+    /// Lock the storage for reading. This operation will block until the write locks are done.
     pub fn read(&self) -> ReadLock<T> {
         ReadLock {
             guard: self.0.read().unwrap(),
@@ -74,6 +110,7 @@ impl<T> Storage<T> {
         }
     }
 
+    /// Lock the storage for writing. This operation will block untill all the locks are done.
     pub fn write(&self) -> WriteLock<T> {
         let mut s = self.0.write().unwrap();
         // process the pending refcount changes
@@ -98,6 +135,7 @@ impl<T> Storage<T> {
 
 impl<T> Clone for Pointer<T> {
     fn clone(&self) -> Pointer<T> {
+        self.pending.lock().unwrap().add_ref.push(self.index);
         Pointer {
             index: self.index,
             target: self.target.clone(),
@@ -129,11 +167,14 @@ impl<'a, T> ops::Deref for ReadLock<'a, T> {
 }
 
 impl<'a, T> ReadLock<'a, T> {
+    /// Borrow a pointed component for reading.
     pub fn access(&self, ptr: &Pointer<T>) -> &T {
         debug_assert_eq!(&*self.storage as *const _, &*ptr.target as *const _);
         &self.guard.data[ptr.index]
     }
 
+    /// Pin a specific component index with a newly created `Pointer`.
+    /// Returns `false` if the element is dead or out of bounds.
     pub fn pin(&self, index: usize) -> Option<Pointer<T>> {
         if index < self.guard.data.len() && self.guard.meta[index] != 0 {
             self.pending.lock().unwrap().add_ref.push(index);
@@ -164,11 +205,13 @@ impl<'a, T> ops::DerefMut for WriteLock<'a, T> {
 }
 
 impl<'a, T> WriteLock<'a, T> {
+    /// Borrow a pointed component for writing.
     pub fn access(&mut self, ptr: &Pointer<T>) -> &mut T {
         debug_assert_eq!(&*self.storage as *const _, &*ptr.target as *const _);
         &mut self.guard.data[ptr.index]
     }
 
+    /// Add a new component to the storage, returning the `Pointer` to it.
     pub fn create(&mut self, value: T) -> Pointer<T> {
         let index = match self.guard.free_list.pop() {
             Some(i) => {

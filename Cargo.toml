@@ -1,6 +1,6 @@
 [package]
 name = "froggy"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Dzmitry Malyshau <kvarkus@gmail.com>"]
 documentation = "https://docs.rs/froggy/"
 repository = "https://github.com/kvark/froggy"
