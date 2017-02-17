@@ -1,0 +1,12 @@
+[package]
+name = "froggy_demo_cubes"
+version = "0.1.0"
+authors = ["Dzmitry Malyshau <kvark@gmail.com>"]
+workspace = "../../"
+
+[dependencies]
+cgmath = "0.12"
+froggy = { path = "../../" }
+gfx = "0.14"
+gfx_window_glutin = "0.14"
+glutin = "0.7"

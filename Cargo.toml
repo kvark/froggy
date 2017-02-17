@@ -11,4 +11,7 @@ description = """
 Froggy is a prototype for the Component Graph System programming model. It aims to combine the convenience of composition-style Object-Oriented Programming with the performance close to Entity-Component Systems.
 """
 
+[workspace]
+members = ["demos/cubes"]
+
 [dependencies]
