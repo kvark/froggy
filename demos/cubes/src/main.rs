@@ -26,6 +26,7 @@ gfx_defines!{
 
     constant Globals {
         projection: [[f32; 4]; 4] = "u_Projection",
+        camera_pos: [f32; 4] = "u_CameraPos",
         light_pos: [f32; 4] = "u_LightPos",
         light_color: [f32; 4] = "u_LightColor",
     }
@@ -45,32 +46,6 @@ fn vertex(x: i8, y: i8, z: i8, nx: i8, ny: i8, nz: i8) -> Vertex {
         normal: [nx, ny, nz, 0],
     }
 }
-
-const CODE_VS: &'static [u8] = b"
-    #version 150 core
-    in vec4 a_Pos;
-
-    uniform b_Globals {
-        mat4 u_Projection;
-        vec4 u_LightPos;
-        vec4 u_LightColor;
-    };
-
-    vec3 rotate_vector(vec4 quat, vec3 vec) {
-        return vec + 2.0 * cross(cross(vec, quat.xyz) + quat.w * vec, quat.xyz);
-    }
-
-    void main() {
-        gl_Position = u_Projection * a_Pos;
-    }
-";
-
-const CODE_FS: &'static [u8] = b"
-    #version 150 core
-    void main() {
-        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-    }
-";
 
 
 fn create_cube<R: gfx::Resources, F: gfx::Factory<R>>(factory: &mut F)
@@ -142,25 +117,30 @@ fn main() {
         gfx::memory::Usage::Dynamic, gfx::Bind::empty()).unwrap();
     encoder.update_buffer(&cube_ibuf, &instances, 0).unwrap();
 
+    let camera_pos = cgmath::Point3::new(-2.0, -10.0, 4.0);
+    let center = cgmath::Point3::origin();
     let mx_proj = {
         let (w, h, _, _) = main_color.get_dimensions();
         let fovy = cgmath::Deg(60.0);
         let aspect = w as f32 / h as f32;
         let perspective = cgmath::perspective(fovy, aspect, 1.0, 100.0);
         let view: cgmath::Matrix4<f32> = Transform::look_at(
-            cgmath::Point3::new(-2.0, -10.0, 4.0),
-            cgmath::Point3::origin(),
-            cgmath::Vector3::unit_z());
+            camera_pos, center, cgmath::Vector3::unit_z());
         perspective * view
     };
     let global_buf = factory.create_constant_buffer(1);
     encoder.update_constant_buffer(&global_buf, &Globals {
         projection: mx_proj.into(),
+        camera_pos: camera_pos.to_vec().extend(1.0).into(),
         light_pos: [10.0, 10.0, 10.0, 1.0],
         light_color: [1.0, 1.0, 0.0, 1.0],
     });
 
-    let pso = factory.create_pipeline_simple(CODE_VS, CODE_FS, pipe::new()).unwrap();
+    let pso = factory.create_pipeline_simple(
+        include_bytes!("vert.glsl"),
+        include_bytes!("frag.glsl"),
+        pipe::new()
+        ).unwrap();
     let data = pipe::Data {
         vert_buf: cube_vbuf,
         inst_buf: cube_ibuf,
