@@ -1,7 +1,7 @@
 #version 150 core
 
 vec3 rotate_vector(vec4 quat, vec3 vec) {
-    return vec + 2.0 * cross(cross(vec, quat.xyz) + quat.w * vec, quat.xyz);
+    return vec + 2.0 * cross(cross(vec, quat.xyz) - quat.w * vec, quat.xyz);
 }
 
 in vec4 a_Pos;
@@ -28,5 +28,5 @@ void main() {
     vec3 light_dir = normalize(u_LightPos.xyz - world_pos);
     vec3 camera_dir = normalize(u_CameraPos.xyz - world_pos);
     v_HalfDir = normalize(light_dir + camera_dir);
-    gl_Position = u_Projection * a_Pos;
+    gl_Position = u_Projection * vec4(world_pos, 1.0);
 }

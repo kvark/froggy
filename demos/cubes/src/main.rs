@@ -5,7 +5,8 @@ extern crate gfx;
 extern crate gfx_window_glutin;
 extern crate glutin;
 
-use cgmath::{EuclideanSpace, Transform};
+use std::time;
+use cgmath::{Angle, EuclideanSpace, One, Rotation3, Transform, Zero};
 use gfx::traits::{Device, Factory, FactoryExt};
 
 
@@ -48,40 +49,40 @@ fn vertex(x: i8, y: i8, z: i8, nx: i8, ny: i8, nz: i8) -> Vertex {
 }
 
 
-fn create_cube<R: gfx::Resources, F: gfx::Factory<R>>(factory: &mut F)
-               -> (gfx::handle::Buffer<R, Vertex>, gfx::Slice<R>)
+fn create_geometry<R: gfx::Resources, F: gfx::Factory<R>>(factory: &mut F)
+                   -> (gfx::handle::Buffer<R, Vertex>, gfx::Slice<R>)
 {
     let vertices = [
         // bottom
-        vertex(1, 1, -1, 0, 0, -1),
-        vertex(1, -1, -1, 0, 0, -1),
-        vertex(-1, -1, -1, 0, 0, -1),
-        vertex(-1, 1, -1, 0, 0, -1),
+        vertex(1, 1, 0, 0, 0, -1),
+        vertex(1, -1, 0, 0, 0, -1),
+        vertex(-1, -1, 0, 0, 0, -1),
+        vertex(-1, 1, 0, 0, 0, -1),
         // top
-        vertex(1, 1, 1, 0, 0, 1),
-        vertex(1, -1, 1, 0, 0, 1),
-        vertex(-1, -1, 1, 0, 0, 1),
-        vertex(-1, 1, 1, 0, 0, 1),
+        vertex(1, 1, 2, 0, 0, 1),
+        vertex(1, -1, 2, 0, 0, 1),
+        vertex(-1, -1, 2, 0, 0, 1),
+        vertex(-1, 1, 2, 0, 0, 1),
         // left
-        vertex(-1, 1, 1, -1, 0, 0),
-        vertex(-1, 1, -1, -1, 0, 0),
-        vertex(-1, -1, -1, -1, 0, 0),
-        vertex(-1, -1, 1, -1, 0, 0),
+        vertex(-1, 1, 2, -1, 0, 0),
+        vertex(-1, 1, 0, -1, 0, 0),
+        vertex(-1, -1, 0, -1, 0, 0),
+        vertex(-1, -1, 2, -1, 0, 0),
         // right
-        vertex(1, 1, 1, 1, 0, 0),
-        vertex(1, 1, -1, 1, 0, 0),
-        vertex(1, -1, -1, 1, 0, 0),
-        vertex(1, -1, 1, 1, 0, 0),
+        vertex(1, 1, 2, 1, 0, 0),
+        vertex(1, 1, 0, 1, 0, 0),
+        vertex(1, -1, 0, 1, 0, 0),
+        vertex(1, -1, 2, 1, 0, 0),
         // front
-        vertex(1, -1, 1, 0, -1, 0),
-        vertex(1, -1, -1, 0, -1, 0),
-        vertex(-1, -1, -1, 0, -1, 0),
-        vertex(-1, -1, 1, 0, -1, 0),
+        vertex(1, -1, 2, 0, -1, 0),
+        vertex(1, -1, 0, 0, -1, 0),
+        vertex(-1, -1, 0, 0, -1, 0),
+        vertex(-1, -1, 2, 0, -1, 0),
         // back
-        vertex(1, 1, 1, 0, 1, 0),
-        vertex(1, 1, -1, 0, 1, 0),
-        vertex(-1, 1, -1, 0, 1, 0),
-        vertex(-1, 1, 1, 0, 1, 0),
+        vertex(1, 1, 2, 0, 1, 0),
+        vertex(1, 1, 0, 0, 1, 0),
+        vertex(-1, 1, 0, 0, 1, 0),
+        vertex(-1, 1, 2, 0, 1, 0),
     ];
 
     let indices = [
@@ -97,7 +98,125 @@ fn create_cube<R: gfx::Resources, F: gfx::Factory<R>>(factory: &mut F)
 }
 
 
+type Space = cgmath::Decomposed<cgmath::Vector3<f32>, cgmath::Quaternion<f32>>;
+
+#[derive(Clone)]
+struct Level {
+    color: [f32; 4],
+    speed: f32,
+}
+
+struct Cube {
+    local: Space,
+    parent: froggy::Pointer<Space>,
+    world: froggy::Pointer<Space>,
+    level: froggy::Pointer<Level>,
+}
+
+fn create_cubes(mut spaces: froggy::WriteLock<Space>,
+                level_pointers: &[froggy::Pointer<Level>])
+                -> Vec<Cube>
+{
+    let mut list = vec![
+        Cube {
+            local: Space {
+                disp: cgmath::Vector3::zero(),
+                rot: cgmath::Quaternion::one(),
+                scale: 2.0,
+            },
+            parent: spaces.create(Space::one()),
+            world: spaces.create(Space::one()),
+            level: level_pointers[0].clone(),
+        }
+    ];
+    struct Stack {
+        parent: froggy::Pointer<Space>,
+        level_id: usize,
+    }
+    let mut stack = vec![
+        Stack {
+            parent: list[0].world.clone(),
+            level_id: 0,
+        }
+    ];
+
+    let axis = [cgmath::Vector3::unit_z(),
+                cgmath::Vector3::unit_x(), -cgmath::Vector3::unit_x(),
+                cgmath::Vector3::unit_y(), -cgmath::Vector3::unit_y()];
+    let children: Vec<_> = axis.iter().map(|&axe| {
+        Space {
+            disp: cgmath::vec3(0.0, 0.0, 1.0),
+            rot: cgmath::Quaternion::from_axis_angle(axe, cgmath::Rad::turn_div_4()),
+            scale: 1.0,
+        }.concat(&Space {
+            disp: cgmath::vec3(0.0, 0.0, 1.0),
+            rot: cgmath::Quaternion::one(),
+            scale: 0.4,
+        })
+    }).collect();
+
+    while let Some(next) = stack.pop() {
+        let level = match level_pointers.get(next.level_id + 1) {
+            Some(ref level) => level.clone(),
+            None => continue,
+        };
+        for child in children.iter() {
+            let cube = Cube {
+                local: child.clone(),
+                parent: next.parent.clone(),
+                world: spaces.create(Space::one()),
+                level: level.clone(),
+            };
+            stack.push(Stack {
+                parent: cube.world.clone(),
+                level_id: next.level_id + 1,
+            });
+            list.push(cube);
+        }
+    }
+
+    list
+}
+
+
 fn main() {
+    // feed Froggy
+    let space_storage = froggy::Storage::new();
+    let level_storage = froggy::Storage::new();
+
+    let level_pointers = {
+        let mut levels = level_storage.write();
+        [
+            levels.create(Level {
+                color: [1.0, 1.0, 0.5, 1.0],
+                speed: 0.7,
+            }),
+            levels.create(Level {
+                color: [0.5, 0.5, 1.0, 1.0],
+                speed: -1.0,
+            }),
+            levels.create(Level {
+                color: [0.5, 1.0, 0.5, 1.0],
+                speed: 1.5,
+            }),
+            levels.create(Level {
+                color: [1.0, 0.5, 0.5, 1.0],
+                speed: -2.0,
+            }),
+            levels.create(Level {
+                color: [0.5, 1.0, 1.0, 1.0],
+                speed: 2.5,
+            }),
+            levels.create(Level {
+                color: [1.0, 0.5, 1.0, 1.0],
+                speed: -3.0,
+            }),
+        ]
+    };
+    let mut cubes = create_cubes(space_storage.write(), &level_pointers);
+    println!("Initialized {} cubes on {} levels", cubes.len(), level_pointers.len());
+
+    // init window and graphics
     let builder = glutin::WindowBuilder::new()
         .with_title("Froggy Cubes demo".to_string())
         .with_vsync();
@@ -105,37 +224,32 @@ fn main() {
         gfx_window_glutin::init::<ColorFormat, DepthFormat>(builder);
     let mut encoder = gfx::Encoder::from(factory.create_command_buffer());
 
-    let (cube_vbuf, cube_slice) = create_cube(&mut factory);
-    let instances = [
-        Instance {
-            offset_scale: [0.0, 0.0, 0.0, 1.0],
-            rotation: [0.0, 0.0, 0.0, 1.0],
-            color: [1.0, 1.0, 1.0, 1.0],
-        },
-    ];
-    let cube_ibuf = factory.create_buffer(1, gfx::buffer::Role::Vertex,
-        gfx::memory::Usage::Dynamic, gfx::Bind::empty()).unwrap();
-    encoder.update_buffer(&cube_ibuf, &instances, 0).unwrap();
+    let (cube_vbuf, mut cube_slice) = create_geometry(&mut factory);
+    let cube_ibuf = factory.create_buffer(cubes.len(),
+        gfx::buffer::Role::Vertex, gfx::memory::Usage::Dynamic, gfx::Bind::empty()
+        ).unwrap();
 
-    let camera_pos = cgmath::Point3::new(-2.0, -10.0, 4.0);
-    let center = cgmath::Point3::origin();
+    // init global parameters
+    let camera_pos = cgmath::Point3::new(-1.8, -8.0, 3.0);
     let mx_proj = {
         let (w, h, _, _) = main_color.get_dimensions();
         let fovy = cgmath::Deg(60.0);
         let aspect = w as f32 / h as f32;
         let perspective = cgmath::perspective(fovy, aspect, 1.0, 100.0);
-        let view: cgmath::Matrix4<f32> = Transform::look_at(
-            camera_pos, center, cgmath::Vector3::unit_z());
+        let focus = cgmath::Point3::new(0.0, 0.0, 3.0);
+        let view = cgmath::Matrix4::look_at(
+            camera_pos, focus, cgmath::Vector3::unit_z());
         perspective * view
     };
     let global_buf = factory.create_constant_buffer(1);
     encoder.update_constant_buffer(&global_buf, &Globals {
         projection: mx_proj.into(),
         camera_pos: camera_pos.to_vec().extend(1.0).into(),
-        light_pos: [10.0, 10.0, 10.0, 1.0],
-        light_color: [1.0, 1.0, 0.0, 1.0],
+        light_pos: [0.0, -10.0, 10.0, 1.0],
+        light_color: [1.0, 1.0, 1.0, 1.0],
     });
 
+    // init pipeline states
     let pso = factory.create_pipeline_simple(
         include_bytes!("vert.glsl"),
         include_bytes!("frag.glsl"),
@@ -149,7 +263,11 @@ fn main() {
         out_depth: main_depth,
     };
 
+    let mut instances = Vec::new();
+    let mut moment = time::Instant::now();
+
     'main: loop {
+        // process events
         for event in window.poll_events() {
             match event {
                 glutin::Event::KeyboardInput(_, _, Some(glutin::VirtualKeyCode::Escape)) |
@@ -157,6 +275,40 @@ fn main() {
                 _ => (),
             }
         }
+        // get time delta
+        let duration = moment.elapsed();
+        let delta = duration.as_secs() as f32 + (duration.subsec_nanos() as f32 * 1.0e-9);
+        moment = time::Instant::now();
+
+        // update instnacing CPU info
+        instances.clear();
+        // update spaces and instances
+        {
+            let mut spaces = space_storage.write();
+            let levels = level_storage.read();
+            for cube in cubes.iter_mut() {
+                let level = levels.access(&cube.level);
+                let angle = cgmath::Rad(delta * level.speed);
+                cube.local.concat_self(&Space {
+                    disp: cgmath::Vector3::zero(),
+                    rot: cgmath::Quaternion::from_angle_z(angle),
+                    scale: 1.0,
+                });
+
+                let space = spaces.access(&cube.parent).concat(&cube.local);
+                *spaces.access(&cube.world) = space;
+
+                instances.push(Instance {
+                    offset_scale: space.disp.extend(space.scale).into(),
+                    rotation: space.rot.v.extend(space.rot.s).into(),
+                    color: level.color,
+                });
+            }
+        }
+        // update instancing GPU info
+        cube_slice.instances = Some((instances.len() as gfx::InstanceCount, 0));
+        encoder.update_buffer(&data.inst_buf, &instances, 0).unwrap();
+
         // draw -- start
         encoder.clear_depth(&data.out_depth, 1.0);
         encoder.clear(&data.out_color, [0.1, 0.2, 0.3, 1.0]);
