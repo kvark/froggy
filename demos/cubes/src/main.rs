@@ -178,6 +178,23 @@ fn create_cubes(mut spaces: froggy::WriteLock<Space>,
     list
 }
 
+fn make_globals(camera_pos: cgmath::Point3<f32>, aspect: f32) -> Globals {
+    let mx_proj = {
+        let fovy = cgmath::Deg(60.0);
+        let perspective = cgmath::perspective(fovy, aspect, 1.0, 100.0);
+        let focus = cgmath::Point3::new(0.0, 0.0, 3.0);
+        let view = cgmath::Matrix4::look_at(
+            camera_pos, focus, cgmath::Vector3::unit_z());
+        perspective * view
+    };
+    Globals {
+        projection: mx_proj.into(),
+        camera_pos: camera_pos.to_vec().extend(1.0).into(),
+        light_pos: [0.0, -10.0, 10.0, 1.0],
+        light_color: [1.0, 1.0, 1.0, 1.0],
+    }
+}
+
 
 fn main() {
     // feed Froggy
@@ -231,23 +248,12 @@ fn main() {
 
     // init global parameters
     let camera_pos = cgmath::Point3::new(-1.8, -8.0, 3.0);
-    let mx_proj = {
+    let globals = {
         let (w, h, _, _) = main_color.get_dimensions();
-        let fovy = cgmath::Deg(60.0);
-        let aspect = w as f32 / h as f32;
-        let perspective = cgmath::perspective(fovy, aspect, 1.0, 100.0);
-        let focus = cgmath::Point3::new(0.0, 0.0, 3.0);
-        let view = cgmath::Matrix4::look_at(
-            camera_pos, focus, cgmath::Vector3::unit_z());
-        perspective * view
+        make_globals(camera_pos, w as f32 / h as f32)
     };
     let global_buf = factory.create_constant_buffer(1);
-    encoder.update_constant_buffer(&global_buf, &Globals {
-        projection: mx_proj.into(),
-        camera_pos: camera_pos.to_vec().extend(1.0).into(),
-        light_pos: [0.0, -10.0, 10.0, 1.0],
-        light_color: [1.0, 1.0, 1.0, 1.0],
-    });
+    encoder.update_constant_buffer(&global_buf, &globals);
 
     // init pipeline states
     let pso = factory.create_pipeline_simple(
@@ -255,7 +261,7 @@ fn main() {
         include_bytes!("frag.glsl"),
         pipe::new()
         ).unwrap();
-    let data = pipe::Data {
+    let mut data = pipe::Data {
         vert_buf: cube_vbuf,
         inst_buf: cube_ibuf,
         globals: global_buf,
@@ -272,6 +278,11 @@ fn main() {
             match event {
                 glutin::Event::KeyboardInput(_, _, Some(glutin::VirtualKeyCode::Escape)) |
                 glutin::Event::Closed => break 'main,
+                glutin::Event::Resized(width, height) => {
+                    gfx_window_glutin::update_views(&window, &mut data.out_color, &mut data.out_depth);
+                    let globals = make_globals(camera_pos, width as f32 / height as f32);
+                    encoder.update_constant_buffer(&data.globals, &globals);
+                },
                 _ => (),
             }
         }
