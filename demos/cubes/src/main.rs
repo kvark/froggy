@@ -5,7 +5,7 @@ extern crate gfx;
 extern crate gfx_window_glutin;
 extern crate glutin;
 
-use std::time;
+use std::{mem, time};
 use cgmath::{Angle, EuclideanSpace, One, Rotation3, Transform, Zero};
 use gfx::traits::{Device, Factory, FactoryExt};
 
@@ -106,36 +106,42 @@ struct Level {
     speed: f32,
 }
 
-struct Cube {
+struct Node {
     local: Space,
-    parent: froggy::Pointer<Space>,
-    world: froggy::Pointer<Space>,
+    world: Space,
+    parent: Option<froggy::Pointer<Node>>,
+}
+
+struct Cube {
+    node: froggy::Pointer<Node>,
     level: froggy::Pointer<Level>,
 }
 
-fn create_cubes(mut spaces: froggy::WriteLock<Space>,
+fn create_cubes(mut nodes: froggy::WriteLock<Node>,
                 level_pointers: &[froggy::Pointer<Level>])
                 -> Vec<Cube>
 {
     let mut list = vec![
         Cube {
-            local: Space {
-                disp: cgmath::Vector3::zero(),
-                rot: cgmath::Quaternion::one(),
-                scale: 2.0,
-            },
-            parent: spaces.create(Space::one()),
-            world: spaces.create(Space::one()),
+            node: nodes.create(Node {
+                local: Space {
+                    disp: cgmath::Vector3::zero(),
+                    rot: cgmath::Quaternion::one(),
+                    scale: 2.0,
+                },
+                world: Space::one(),
+                parent: None,
+            }),
             level: level_pointers[0].clone(),
         }
     ];
     struct Stack {
-        parent: froggy::Pointer<Space>,
+        parent: froggy::Pointer<Node>,
         level_id: usize,
     }
     let mut stack = vec![
         Stack {
-            parent: list[0].world.clone(),
+            parent: list[0].node.clone(),
             level_id: 0,
         }
     ];
@@ -162,13 +168,15 @@ fn create_cubes(mut spaces: froggy::WriteLock<Space>,
         };
         for child in children.iter() {
             let cube = Cube {
-                local: child.clone(),
-                parent: next.parent.clone(),
-                world: spaces.create(Space::one()),
+                node: nodes.create(Node {
+                    local: child.clone(),
+                    world: Space::one(),
+                    parent: Some(next.parent.clone()),
+                }),
                 level: level.clone(),
             };
             stack.push(Stack {
-                parent: cube.world.clone(),
+                parent: cube.node.clone(),
                 level_id: next.level_id + 1,
             });
             list.push(cube);
@@ -198,11 +206,11 @@ fn make_globals(camera_pos: cgmath::Point3<f32>, aspect: f32) -> Globals {
 
 fn main() {
     // feed Froggy
-    let space_storage = froggy::Storage::new();
-    let level_storage = froggy::Storage::new();
+    let node_store = froggy::Storage::new();
+    let level_store = froggy::Storage::new();
 
     let level_pointers = {
-        let mut levels = level_storage.write();
+        let mut levels = level_store.write();
         [
             levels.create(Level {
                 color: [1.0, 1.0, 0.5, 1.0],
@@ -230,7 +238,7 @@ fn main() {
             }),
         ]
     };
-    let mut cubes = create_cubes(space_storage.write(), &level_pointers);
+    let mut cubes = create_cubes(node_store.write(), &level_pointers);
     println!("Initialized {} cubes on {} levels", cubes.len(), level_pointers.len());
 
     // init window and graphics
@@ -291,24 +299,54 @@ fn main() {
         let delta = duration.as_secs() as f32 + (duration.subsec_nanos() as f32 * 1.0e-9);
         moment = time::Instant::now();
 
-        // update instnacing CPU info
-        instances.clear();
-        // update spaces and instances
+        // Note: the following 3 passes could be combined into one for efficiency.
+        // This is not the goal of the demo though. It is made with an assuption that
+        // the scenegraph and its logic is separate from the main game, and that
+        // more processing is done in parallel.
+
+        // animate local spaces
         {
-            let mut spaces = space_storage.write();
-            let levels = level_storage.read();
+            let mut nodes = node_store.write();
+            let levels = level_store.read();
             for cube in cubes.iter_mut() {
+                let node = nodes.access(&cube.node);
                 let level = levels.access(&cube.level);
                 let angle = cgmath::Rad(delta * level.speed);
-                cube.local.concat_self(&Space {
+                node.local.concat_self(&Space {
                     disp: cgmath::Vector3::zero(),
                     rot: cgmath::Quaternion::from_angle_z(angle),
                     scale: 1.0,
                 });
+            }
+        }
 
-                let space = spaces.access(&cube.parent).concat(&cube.local);
-                *spaces.access(&cube.world) = space;
+        // re-compute world spaces
+        {
+            let mut nodes = node_store.write();
+            let mut dummy = Node {
+                local: Space::one(),
+                world: Space::one(),
+                parent: None,
+            };
+            for i in 0 .. nodes.len() {
+                // replacing with dummy instead of cloning here - to avoid the refcount bumps
+                let mut node = mem::replace(&mut nodes[i], dummy);
+                node.world = match node.parent {
+                    Some(ref parent) => nodes.access(parent).world.concat(&node.local),
+                    None => node.local,
+                };
+                dummy = mem::replace(&mut nodes[i], node);
+            }
+        }
 
+        // update instancing CPU info
+        instances.clear();
+        {
+            let mut nodes = node_store.write();
+            let levels = level_store.read();
+            for cube in cubes.iter_mut() {
+                let level = levels.access(&cube.level);
+                let space = &nodes.access(&cube.node).world;
                 instances.push(Instance {
                     offset_scale: space.disp.extend(space.scale).into(),
                     rotation: space.rot.v.extend(space.rot.s).into(),
@@ -316,6 +354,7 @@ fn main() {
                 });
             }
         }
+
         // update instancing GPU info
         cube_slice.instances = Some((instances.len() as gfx::InstanceCount, 0));
         encoder.update_buffer(&data.inst_buf, &instances, 0).unwrap();
