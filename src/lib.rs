@@ -173,6 +173,15 @@ impl<'a, T> ReadLock<'a, T> {
         &self.guard.data[ptr.index]
     }
 
+    /// Borrow an existing component by index, not affecting it's reference count.
+    pub fn access_index(&self, index: usize) -> Option<&T> {
+        if index < self.guard.data.len() && self.guard.meta[index] != 0 {
+            Some(&self.guard.data[index])
+        } else {
+            None
+        }
+    }
+
     /// Pin a specific component index with a newly created `Pointer`.
     /// Returns `false` if the element is dead or out of bounds.
     pub fn pin(&self, index: usize) -> Option<Pointer<T>> {
@@ -209,6 +218,15 @@ impl<'a, T> WriteLock<'a, T> {
     pub fn access(&mut self, ptr: &Pointer<T>) -> &mut T {
         debug_assert_eq!(&*self.storage as *const _, &*ptr.target as *const _);
         &mut self.guard.data[ptr.index]
+    }
+
+    /// Borrow an existing component by index, not affecting it's reference count.
+    pub fn access_index(&mut self, index: usize) -> Option<&mut T> {
+        if index < self.guard.data.len() && self.guard.meta[index] != 0 {
+            Some(&mut self.guard.data[index])
+        } else {
+            None
+        }
     }
 
     /// Add a new component to the storage, returning the `Pointer` to it.
