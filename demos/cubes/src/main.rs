@@ -100,10 +100,12 @@ fn create_geometry<R: gfx::Resources, F: gfx::Factory<R>>(factory: &mut F)
 
 type Space = cgmath::Decomposed<cgmath::Vector3<f32>, cgmath::Quaternion<f32>>;
 
-#[derive(Clone)]
 struct Level {
-    color: [f32; 4],
     speed: f32,
+}
+
+struct Material {
+    color: [f32; 4],
 }
 
 struct Node {
@@ -114,11 +116,13 @@ struct Node {
 
 struct Cube {
     node: froggy::Pointer<Node>,
+    material: froggy::Pointer<Material>,
     level: froggy::Pointer<Level>,
 }
 
 fn create_cubes(mut nodes: froggy::WriteLock<Node>,
-                level_pointers: &[froggy::Pointer<Level>])
+                materials: froggy::ReadLock<Material>,
+                levels: froggy::ReadLock<Level>)
                 -> Vec<Cube>
 {
     let mut list = vec![
@@ -132,7 +136,8 @@ fn create_cubes(mut nodes: froggy::WriteLock<Node>,
                 world: Space::one(),
                 parent: None,
             }),
-            level: level_pointers[0].clone(),
+            material: materials.pin(0).unwrap(),
+            level: levels.pin(0).unwrap(),
         }
     ];
     struct Stack {
@@ -162,8 +167,14 @@ fn create_cubes(mut nodes: froggy::WriteLock<Node>,
     }).collect();
 
     while let Some(next) = stack.pop() {
-        let level = match level_pointers.get(next.level_id + 1) {
-            Some(ref level) => level.clone(),
+        //HACK: materials are indexed the same way as levels
+        // it's fine for demostration purposes
+        let material = match materials.pin(next.level_id + 1) {
+            Some(material) => material,
+            None => continue,
+        };
+        let level = match levels.pin(next.level_id + 1) {
+            Some(level) => level,
             None => continue,
         };
         for child in children.iter() {
@@ -173,6 +184,7 @@ fn create_cubes(mut nodes: froggy::WriteLock<Node>,
                     world: Space::one(),
                     parent: Some(next.parent.clone()),
                 }),
+                material: material.clone(),
                 level: level.clone(),
             };
             stack.push(Stack {
@@ -203,47 +215,50 @@ fn make_globals(camera_pos: cgmath::Point3<f32>, aspect: f32) -> Globals {
     }
 }
 
+const COLORS: [[f32; 4]; 6] = [
+    [1.0, 1.0, 0.5, 1.0],
+    [0.5, 0.5, 1.0, 1.0],
+    [0.5, 1.0, 0.5, 1.0],
+    [1.0, 0.5, 0.5, 1.0],
+    [0.5, 1.0, 1.0, 1.0],
+    [1.0, 0.5, 1.0, 1.0],
+];
+
+const SPEEDS: [f32; 6] = [
+    0.7, -1.0, 1.3, -1.6, 1.9, -2.2
+];
 
 fn main() {
     // feed Froggy
     let node_store = froggy::Storage::new();
+    let material_store = froggy::Storage::new();
+    {
+        let mut materials = material_store.write();
+        for &color in COLORS.iter() {
+            materials.create(Material {
+                color: color,
+            });
+        }
+    }
     let level_store = froggy::Storage::new();
-
-    let level_pointers = {
+    {
         let mut levels = level_store.write();
-        [
+        for &speed in SPEEDS.iter() {
             levels.create(Level {
-                color: [1.0, 1.0, 0.5, 1.0],
-                speed: 0.7,
-            }),
-            levels.create(Level {
-                color: [0.5, 0.5, 1.0, 1.0],
-                speed: -1.0,
-            }),
-            levels.create(Level {
-                color: [0.5, 1.0, 0.5, 1.0],
-                speed: 1.5,
-            }),
-            levels.create(Level {
-                color: [1.0, 0.5, 0.5, 1.0],
-                speed: -2.0,
-            }),
-            levels.create(Level {
-                color: [0.5, 1.0, 1.0, 1.0],
-                speed: 2.5,
-            }),
-            levels.create(Level {
-                color: [1.0, 0.5, 1.0, 1.0],
-                speed: -3.0,
-            }),
-        ]
-    };
-    let mut cubes = create_cubes(node_store.write(), &level_pointers);
-    println!("Initialized {} cubes on {} levels", cubes.len(), level_pointers.len());
+                speed: speed,
+            });
+        }
+    }
+
+    //Note: we populated the storages, but the returned pointers are already dropped.
+    // Thus, all will be lost if we lock for writing now, but locking for reading retains the
+    // contents, and cube creation will add references to them, so they will stay alive.
+    let mut cubes = create_cubes(node_store.write(), material_store.read(), level_store.read());
+    println!("Initialized {} cubes on {} levels", cubes.len(), SPEEDS.len());
 
     // init window and graphics
     let builder = glutin::WindowBuilder::new()
-        .with_title("Froggy Cubes demo".to_string())
+        .with_title("Froggy Cube-seption".to_string())
         .with_vsync();
     let (window, mut device, mut factory, main_color, main_depth) =
         gfx_window_glutin::init::<ColorFormat, DepthFormat>(builder);
@@ -343,14 +358,14 @@ fn main() {
         instances.clear();
         {
             let mut nodes = node_store.write();
-            let levels = level_store.read();
+            let materials = material_store.read();
             for cube in cubes.iter_mut() {
-                let level = levels.access(&cube.level);
+                let material = materials.access(&cube.material);
                 let space = &nodes.access(&cube.node).world;
                 instances.push(Instance {
                     offset_scale: space.disp.extend(space.scale).into(),
                     rotation: space.rot.v.extend(space.rot.s).into(),
-                    color: level.color,
+                    color: material.color,
                 });
             }
         }
