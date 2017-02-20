@@ -1,6 +1,4 @@
-## Cube-seption demo
-
-<img src="cube-seption.png" alt="screenshot"/>
+<img src="cube-ception.png" alt="screenshot"/>
 
 This demo shows a simple recursive animated cube. Aside from stealing hours of staring at it, the code can showcase a few concepts:
 

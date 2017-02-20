@@ -258,7 +258,7 @@ fn main() {
 
     // init window and graphics
     let builder = glutin::WindowBuilder::new()
-        .with_title("Froggy Cube-seption".to_string())
+        .with_title("Froggy Cube-ception".to_string())
         .with_vsync();
     let (window, mut device, mut factory, main_color, main_depth) =
         gfx_window_glutin::init::<ColorFormat, DepthFormat>(builder);
