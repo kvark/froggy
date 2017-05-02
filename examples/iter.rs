@@ -10,19 +10,19 @@ fn main() {
     }
     println!("Initial array:");
     for value in storage.read().iter() {
-        println!("Value {}", value);
+        println!("Value {}", *value);
     }
     {
         let ptr = {
             let r = storage.read();
-            let index = r.iter().position(|v| *v == 4).unwrap();
-            r.pin(index).unwrap()
+            let item = r.iter().find(|v| **v == 4).unwrap();
+            r.pin(&item)
         };
         let mut w = storage.write();
         *w.access(&ptr) = 350 as i32;
     }
     println!("Array after change:");
     for value in storage.read().iter() {
-        println!("Value {}", value);
+        println!("Value {}", *value);
     }
 }
