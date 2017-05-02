@@ -1,6 +1,8 @@
 # froggy
-[![Build Status](https://travis-ci.org/kvark/froggy.svg)](https://travis-ci.org/kvark/froggy)
+[![Build Status](https://travis-ci.org/kvark/froggy.svg?branch=master)](https://travis-ci.org/kvark/froggy)
+[![Docs](https://docs.rs/froggy/badge.svg)](https://docs.rs/froggy)
 [![Crates.io](https://img.shields.io/crates/v/froggy.svg?maxAge=2592000)](https://crates.io/crates/froggy)
+[![Gitter](https://badges.gitter.im/kvark/froggy.svg)](https://gitter.im/almost-ecs/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
 Froggy is a prototype for [Component Graph System](https://github.com/kvark/froggy/wiki/Component-Graph-System). Froggy is not an ECS (it could as well be named "finecs" but then it would have "ecs" in the name... yikes)! Give it a try if:
   - you are open to new paradigms and programming models
