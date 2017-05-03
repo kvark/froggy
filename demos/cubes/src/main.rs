@@ -125,6 +125,8 @@ fn create_cubes(mut nodes: froggy::WriteLock<Node>,
                 levels: froggy::ReadLock<Level>)
                 -> Vec<Cube>
 {
+    let root_mat = materials.iter().next().unwrap();
+    let root_lev = levels.iter().next().unwrap();
     let mut list = vec![
         Cube {
             node: nodes.create(Node {
@@ -136,8 +138,8 @@ fn create_cubes(mut nodes: froggy::WriteLock<Node>,
                 world: Space::one(),
                 parent: None,
             }),
-            material: materials.pin(0).unwrap(),
-            level: levels.pin(0).unwrap(),
+            material: materials.pin(&root_mat),
+            level: levels.pin(&root_lev),
         }
     ];
     struct Stack {
@@ -147,7 +149,7 @@ fn create_cubes(mut nodes: froggy::WriteLock<Node>,
     let mut stack = vec![
         Stack {
             parent: list[0].node.clone(),
-            level_id: 0,
+            level_id: 1,
         }
     ];
 
@@ -169,12 +171,12 @@ fn create_cubes(mut nodes: froggy::WriteLock<Node>,
     while let Some(next) = stack.pop() {
         //HACK: materials are indexed the same way as levels
         // it's fine for demostration purposes
-        let material = match materials.pin(next.level_id + 1) {
-            Some(material) => material,
+        let material = match materials.iter().nth(next.level_id) {
+            Some(item) => materials.pin(&item),
             None => continue,
         };
-        let level = match levels.pin(next.level_id + 1) {
-            Some(level) => level,
+        let level = match levels.iter().nth(next.level_id) {
+            Some(item) => levels.pin(&item),
             None => continue,
         };
         for child in children.iter() {
@@ -338,19 +340,11 @@ fn main() {
         // re-compute world spaces
         {
             let mut nodes = node_store.write();
-            let mut dummy = Node {
-                local: Space::one(),
-                world: Space::one(),
-                parent: None,
-            };
-            for i in 0 .. nodes.len() {
-                // replacing with dummy instead of cloning here - to avoid the refcount bumps
-                let mut node = mem::replace(&mut nodes[i], dummy);
+            for mut node in nodes.iter() {
                 node.world = match node.parent {
                     Some(ref parent) => nodes.access(parent).world.concat(&node.local),
                     None => node.local,
                 };
-                dummy = mem::replace(&mut nodes[i], node);
             }
         }
 
