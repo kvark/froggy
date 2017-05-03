@@ -21,7 +21,7 @@ However, CGS has a number of advantages:
 #![warn(missing_docs)]
 
 use std::marker::PhantomData;
-use std::ops;
+use std::{mem, ops};
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 /// Reference counter type. It doesn't make sense to allocate too much bit for it in regular applications.
@@ -285,9 +285,9 @@ impl<'b, 'a, T> Iterator for WriteIter<'b, 'a, T> {
 
 impl<'a, T> WriteLock<'a, T> {
     /// Borrow a pointed component for writing.
-    pub fn access(&mut self, ptr: &Pointer<T>) -> &mut T {
-        debug_assert_eq!(&*self.storage as *const _, &*ptr.target as *const _);
-        &mut self.guard.data[ptr.index]
+    pub fn access(&mut self, pointer: &Pointer<T>) -> &mut T {
+        debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
+        &mut self.guard.data[pointer.index]
     }
 
     /// Iterate all components in this locked storage.
@@ -309,12 +309,43 @@ impl<'a, T> WriteLock<'a, T> {
     }
 
     /// Pin an iterated item with a newly created `Pointer`.
-    pub fn pin(&self, item: &WriteItem<'a, T>) -> Pointer<T> {
+    pub fn pin(&mut self, item: &WriteItem<'a, T>) -> Pointer<T> {
+        // self.guard.meta[item.index] += 1; // requires mutable borrow
         self.pending.lock().unwrap().add_ref.push(item.index);
         Pointer {
             index: item.index,
             target: self.storage.clone(),
             pending: self.pending.clone(),
+        }
+    }
+
+    /// Get a `Pointer` to the first element of the storage.
+    pub fn first(&mut self) -> Option<Pointer<T>> {
+        match self.guard.meta.first_mut() {
+            Some(meta) => {
+                *meta += 1;
+                Some(Pointer {
+                    index: 0,
+                    target: self.storage.clone(),
+                    pending: self.pending.clone(),
+                })
+            },
+            None => None,
+        }
+    }
+
+    /// Move the `Pointer` to the next element, if any.
+    pub fn advance(&mut self, mut pointer: Pointer<T>) -> Option<Pointer<T>> {
+        debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
+        self.guard.meta[pointer.index] -= 1;
+        pointer.index += 1;
+        if pointer.index < self.guard.meta.len() {
+            self.guard.meta[pointer.index] += 1;
+            Some(pointer)
+        } else {
+            // the refcount is already updated
+            mem::forget(pointer);
+            None
         }
     }
 

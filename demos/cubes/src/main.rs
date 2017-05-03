@@ -5,7 +5,7 @@ extern crate gfx;
 extern crate gfx_window_glutin;
 extern crate glutin;
 
-use std::{mem, time};
+use std::{time};
 use cgmath::{Angle, EuclideanSpace, One, Rotation3, Transform, Zero};
 use gfx::traits::{Device, Factory, FactoryExt};
 
@@ -340,11 +340,18 @@ fn main() {
         // re-compute world spaces
         {
             let mut nodes = node_store.write();
-            for mut node in nodes.iter() {
-                node.world = match node.parent {
-                    Some(ref parent) => nodes.access(parent).world.concat(&node.local),
-                    None => node.local,
+            let mut node_maybe = nodes.first();
+            while let Some(node_ptr) = node_maybe {
+                let (local, parent) = {
+                    let n = nodes.access(&node_ptr);
+                    (n.local.clone(), n.parent.clone()) //FIXME
                 };
+                let world = match parent {
+                    Some(parent) => nodes.access(&parent).world.concat(&local),
+                    None => local,
+                };
+                nodes.access(&node_ptr).world = world;
+                node_maybe = nodes.advance(node_ptr);
             }
         }
 
