@@ -82,8 +82,8 @@ pub struct WriteLock<'a, T: 'a> {
 }
 
 /// Iterator for writing components.
-pub struct WriteIter<'a, T: 'a> {
-    lock: &'a mut WriteLock<'a, T>,
+pub struct WriteIter<'b, 'a: 'b, T: 'a> {
+    lock: &'b mut WriteLock<'a, T>,
     skip_lost: bool,
     index: usize,
 }
@@ -263,7 +263,7 @@ impl<'a, T> ops::DerefMut for WriteItem<'a, T> {
     }
 }
 
-impl<'a, T> Iterator for WriteIter<'a, T> {
+impl<'b, 'a, T> Iterator for WriteIter<'b, 'a, T> {
     type Item = WriteItem<'a, T>;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -291,7 +291,7 @@ impl<'a, T> WriteLock<'a, T> {
     }
 
     /// Iterate all components in this locked storage.
-    pub fn iter(&'a mut self) -> WriteIter<'a, T> {
+    pub fn iter<'b>(&'b mut self) -> WriteIter<'b, 'a, T> {
         WriteIter {
             lock: self,
             skip_lost: false,
@@ -300,7 +300,7 @@ impl<'a, T> WriteLock<'a, T> {
     }
 
     /// Iterate all components that are still referenced by something.
-    pub fn iter_alive(&'a mut self) -> WriteIter<'a, T> {
+    pub fn iter_alive<'b>(&'b mut self) -> WriteIter<'b, 'a, T> {
         WriteIter {
             lock: self,
             skip_lost: true,
