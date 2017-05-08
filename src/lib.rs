@@ -285,9 +285,15 @@ impl<'b, 'a, T> Iterator for WriteIter<'b, 'a, T> {
 
 impl<'a, T> WriteLock<'a, T> {
     /// Borrow a pointed component for writing.
-    pub fn access(&mut self, pointer: &Pointer<T>) -> &mut T {
+    pub fn access_mut(&mut self, pointer: &Pointer<T>) -> &mut T {
         debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
         &mut self.guard.data[pointer.index]
+    }
+
+    /// Borrow a pointed component for reading.
+    pub fn access(&self, pointer: &Pointer<T>) -> &T {
+        debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
+        &self.guard.data[pointer.index]
     }
 
     /// Iterate all components in this locked storage.

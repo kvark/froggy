@@ -19,7 +19,7 @@ fn main() {
             r.pin(&item)
         };
         let mut w = storage.write();
-        *w.access(&ptr) = 350 as i32;
+        *w.access_mut(&ptr) = 350 as i32;
     }
     println!("Array after change:");
     for value in storage.read().iter() {

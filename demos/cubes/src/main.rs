@@ -326,7 +326,7 @@ fn main() {
             let mut nodes = node_store.write();
             let levels = level_store.read();
             for cube in cubes.iter_mut() {
-                let node = nodes.access(&cube.node);
+                let node = nodes.access_mut(&cube.node);
                 let level = levels.access(&cube.level);
                 let angle = cgmath::Rad(delta * level.speed);
                 node.local.concat_self(&Space {
@@ -342,15 +342,12 @@ fn main() {
             let mut nodes = node_store.write();
             let mut node_maybe = nodes.first();
             while let Some(node_ptr) = node_maybe {
-                let (local, parent) = {
-                    let n = nodes.access(&node_ptr);
-                    (n.local.clone(), n.parent.clone()) //FIXME
-                };
-                let world = match parent {
-                    Some(parent) => nodes.access(&parent).world.concat(&local),
+                let local = nodes.access(&node_ptr).local;
+                let world = match nodes.access(&node_ptr).parent {
+                    Some(ref parent) => nodes.access(parent).world.concat(&local),
                     None => local,
                 };
-                nodes.access(&node_ptr).world = world;
+                nodes.access_mut(&node_ptr).world = world;
                 node_maybe = nodes.advance(node_ptr);
             }
         }
