@@ -10,8 +10,15 @@ exclude = ["doc", ".travis.yml"]
 description = """
 Froggy is a prototype for the Component Graph System programming model. It aims to combine the convenience of composition-style Object-Oriented Programming with the performance close to Entity-Component Systems.
 """
+build = "build.rs"
 
 [workspace]
 members = ["demos/cubes"]
 
 [dependencies]
+
+[build-dependencies]
+skeptic = "0.9"
+
+[dev-dependencies]
+skeptic = "0.9"

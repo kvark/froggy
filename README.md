@@ -14,6 +14,9 @@ Check [ecs_bench](https://github.com/lschmierer/ecs_bench) for performance compa
 ## Example
 
 ```rust
+extern crate froggy;
+
+fn main() {
     let positions = froggy::Storage::new();
     // create entities
     let entities = {
@@ -24,7 +27,8 @@ Check [ecs_bench](https://github.com/lschmierer/ecs_bench) for performance compa
     {
         let mut p = positions.write();
         for e in &entities {
-            *p.access(e) += 1;
+            *p.access_mut(e) += 1;
         }
     }
+}
 ```
