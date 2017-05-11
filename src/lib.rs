@@ -34,7 +34,7 @@ type RefCount = u16;
 type Epoch = u16;
 
 /// The error type which is returned from upgrading WeakPointer.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum UpgradeErr {
     /// Storage has been dropped.
     DeadStorage,
@@ -43,6 +43,7 @@ pub enum UpgradeErr {
 }
 
 /// Inner storage data that is locked by `RwLock`.
+#[derive(Debug)]
 struct StorageInner<T> {
     data: Vec<T>,
     meta: Vec<RefCount>,
@@ -50,6 +51,7 @@ struct StorageInner<T> {
 }
 
 /// Pending reference counts updates.
+#[derive(Debug)]
 struct Pending {
     add_ref: Vec<usize>,
     sub_ref: Vec<usize>,
@@ -75,6 +77,7 @@ pub struct Storage<T>(StorageRef<T>, PendingRef);
 /// The component is guaranteed to be accessible for as long as this pointer is alive.
 /// You'd need a locked storage to access the data.
 /// The pointer also holds the storage alive and knows the index of the element to look up.
+#[derive(Debug)]
 pub struct Pointer<T> {
     index: usize,
     epoch: Epoch,
