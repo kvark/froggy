@@ -326,10 +326,9 @@ fn main() {
             let mut nodes = node_store.write();
             let levels = level_store.read();
             for cube in cubes.iter_mut() {
-                let node = nodes.access_mut(&cube.node);
-                let level = levels.access(&cube.level);
+                let level = &levels[&cube.level];
                 let angle = cgmath::Rad(delta * level.speed);
-                node.local.concat_self(&Space {
+                nodes[&cube.node].local.concat_self(&Space {
                     disp: cgmath::Vector3::zero(),
                     rot: cgmath::Quaternion::from_angle_z(angle),
                     scale: 1.0,
@@ -342,12 +341,12 @@ fn main() {
             let mut nodes = node_store.write();
             let mut node_maybe = nodes.first();
             while let Some(node_ptr) = node_maybe {
-                let local = nodes.access(&node_ptr).local;
-                let world = match nodes.access(&node_ptr).parent {
-                    Some(ref parent) => nodes.access(parent).world.concat(&local),
+                let local = nodes[&node_ptr].local;
+                let world = match nodes[&node_ptr].parent {
+                    Some(ref parent) => nodes[parent].world.concat(&local),
                     None => local,
                 };
-                nodes.access_mut(&node_ptr).world = world;
+                nodes[&node_ptr].world = world;
                 node_maybe = nodes.advance(node_ptr);
             }
         }
@@ -355,11 +354,11 @@ fn main() {
         // update instancing CPU info
         instances.clear();
         {
-            let mut nodes = node_store.write();
+            let nodes = node_store.write();
             let materials = material_store.read();
             for cube in cubes.iter_mut() {
-                let material = materials.access(&cube.material);
-                let space = &nodes.access(&cube.node).world;
+                let material = &materials[&cube.material];
+                let space = &nodes[&cube.node].world;
                 instances.push(Instance {
                     offset_scale: space.disp.extend(space.scale).into(),
                     rotation: space.rot.v.extend(space.rot.s).into(),

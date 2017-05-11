@@ -285,13 +285,15 @@ impl<'a, T> Iterator for ReadIter<'a, T> {
     }
 }
 
-impl<'a, T> ReadLock<'a, T> {
-    /// Borrow a pointed component for reading.
-    pub fn access(&self, ptr: &Pointer<T>) -> &T {
-        debug_assert_eq!(&*self.storage as *const _, &*ptr.target as *const _);
-        &self.guard.data[ptr.index]
+impl<'a, 'b, T> ops::Index<&'b Pointer<T>> for ReadLock<'a, T> {
+    type Output = T;
+    fn index(&self, pointer: &'b Pointer<T>) -> &T {
+        debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
+        &self.guard.data[pointer.index]
     }
+}
 
+impl<'a, T> ReadLock<'a, T> {
     /// Iterate all components in this locked storage.
     pub fn iter(&'a self) -> ReadIter<'a, T> {
         ReadIter {
@@ -364,19 +366,22 @@ impl<'b, 'a, T> Iterator for WriteIter<'b, 'a, T> {
     }
 }
 
-impl<'a, T> WriteLock<'a, T> {
-    /// Borrow a pointed component for writing.
-    pub fn access_mut(&mut self, pointer: &Pointer<T>) -> &mut T {
-        debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
-        &mut self.guard.data[pointer.index]
-    }
-
-    /// Borrow a pointed component for reading.
-    pub fn access(&self, pointer: &Pointer<T>) -> &T {
+impl<'a, 'b, T> ops::Index<&'b Pointer<T>> for WriteLock<'a, T> {
+    type Output = T;
+    fn index(&self, pointer: &'b Pointer<T>) -> &T {
         debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
         &self.guard.data[pointer.index]
     }
+}
 
+impl<'a, 'b, T> ops::IndexMut<&'b Pointer<T>> for WriteLock<'a, T> {
+    fn index_mut(&mut self, pointer: &'b Pointer<T>) -> &mut T {
+        debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
+        &mut self.guard.data[pointer.index]
+    }
+}
+
+impl<'a, T> WriteLock<'a, T> {
     /// Iterate all components in this locked storage.
     pub fn iter<'b>(&'b mut self) -> WriteIter<'b, 'a, T> {
         WriteIter {
