@@ -1,7 +1,8 @@
 [package]
 name = "froggy"
 version = "0.2.0"
-authors = ["Dzmitry Malyshau <kvarkus@gmail.com>"]
+authors = ["Dzmitry Malyshau <kvarkus@gmail.com>",
+           "Ilya Bogdanov <fumlead@gmail.com>"]
 documentation = "https://docs.rs/froggy/"
 repository = "https://github.com/kvark/froggy"
 keywords = ["gamedev", "ecs"]
