@@ -27,7 +27,7 @@ fn main() {
     {
         let mut p = positions.write();
         for e in &entities {
-            *p.access_mut(e) += 1;
+            p[e] += 1;
         }
     }
 }

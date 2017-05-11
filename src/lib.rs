@@ -289,7 +289,8 @@ impl<'a, 'b, T> ops::Index<&'b Pointer<T>> for ReadLock<'a, T> {
     type Output = T;
     fn index(&self, pointer: &'b Pointer<T>) -> &T {
         debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
-        &self.guard.data[pointer.index]
+        debug_assert!(pointer.index < self.guard.data.len());
+        unsafe { self.guard.data.get_unchecked(pointer.index) }
     }
 }
 
@@ -370,14 +371,16 @@ impl<'a, 'b, T> ops::Index<&'b Pointer<T>> for WriteLock<'a, T> {
     type Output = T;
     fn index(&self, pointer: &'b Pointer<T>) -> &T {
         debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
-        &self.guard.data[pointer.index]
+        debug_assert!(pointer.index < self.guard.data.len());
+        unsafe { self.guard.data.get_unchecked(pointer.index) }
     }
 }
 
 impl<'a, 'b, T> ops::IndexMut<&'b Pointer<T>> for WriteLock<'a, T> {
     fn index_mut(&mut self, pointer: &'b Pointer<T>) -> &mut T {
         debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
-        &mut self.guard.data[pointer.index]
+        debug_assert!(pointer.index < self.guard.data.len());
+        unsafe { self.guard.data.get_unchecked_mut(pointer.index) }
     }
 }
 
