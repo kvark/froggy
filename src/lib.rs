@@ -57,6 +57,7 @@ struct Pending {
 }
 
 impl Pending {
+    #[inline]
     fn drain_sub(&mut self) -> (Drain<usize>, &mut [Epoch]) {
         (self.sub_ref.drain(..), self.epoch.as_mut_slice())
     }
@@ -83,6 +84,7 @@ pub struct Pointer<T> {
 
 impl<T> Pointer<T> {
     /// Creates a new `WeakPointer` to this component.
+    #[inline]
     pub fn downgrade(&self) -> WeakPointer<T> {
         WeakPointer {
             index: self.index,
@@ -183,6 +185,7 @@ impl<T> Storage<T> {
     }
 
     /// Lock the storage for reading. This operation will block until the write locks are done.
+    #[inline]
     pub fn read(&self) -> ReadLock<T> {
         ReadLock {
             guard: self.0.read().unwrap(),
@@ -217,6 +220,7 @@ impl<T> Storage<T> {
 }
 
 impl<T> Clone for Pointer<T> {
+    #[inline]
     fn clone(&self) -> Pointer<T> {
         self.pending.lock().unwrap().add_ref.push(self.index);
         Pointer {
@@ -229,6 +233,7 @@ impl<T> Clone for Pointer<T> {
 }
 
 impl<T> Clone for WeakPointer<T> {
+    #[inline]
     fn clone(&self) -> WeakPointer<T> {
         WeakPointer {
             index: self.index,
@@ -240,6 +245,7 @@ impl<T> Clone for WeakPointer<T> {
 }
 
 impl<T> PartialEq for Pointer<T> {
+    #[inline]
     fn eq(&self, other: &Pointer<T>) -> bool {
         self.index == other.index &&
         &*self.target as *const _ == &*other.target as *const _
@@ -247,6 +253,7 @@ impl<T> PartialEq for Pointer<T> {
 }
 
 impl<T> Drop for Pointer<T> {
+    #[inline]
     fn drop(&mut self) {
         self.pending.lock().unwrap().sub_ref.push(self.index);
     }
@@ -287,6 +294,7 @@ impl<'a, T> Iterator for ReadIter<'a, T> {
 
 impl<'a, 'b, T> ops::Index<&'b Pointer<T>> for ReadLock<'a, T> {
     type Output = T;
+    #[inline]
     fn index(&self, pointer: &'b Pointer<T>) -> &T {
         debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
         debug_assert!(pointer.index < self.guard.data.len());
@@ -296,6 +304,7 @@ impl<'a, 'b, T> ops::Index<&'b Pointer<T>> for ReadLock<'a, T> {
 
 impl<'a, T> ReadLock<'a, T> {
     /// Iterate all components in this locked storage.
+    #[inline]
     pub fn iter(&'a self) -> ReadIter<'a, T> {
         ReadIter {
             lock: self,
@@ -305,6 +314,7 @@ impl<'a, T> ReadLock<'a, T> {
     }
 
     /// Iterate all components that are still referenced by something.
+    #[inline]
     pub fn iter_alive(&'a self) -> ReadIter<'a, T> {
         ReadIter {
             lock: self,
@@ -369,6 +379,7 @@ impl<'b, 'a, T> Iterator for WriteIter<'b, 'a, T> {
 
 impl<'a, 'b, T> ops::Index<&'b Pointer<T>> for WriteLock<'a, T> {
     type Output = T;
+    #[inline]
     fn index(&self, pointer: &'b Pointer<T>) -> &T {
         debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
         debug_assert!(pointer.index < self.guard.data.len());
@@ -377,6 +388,7 @@ impl<'a, 'b, T> ops::Index<&'b Pointer<T>> for WriteLock<'a, T> {
 }
 
 impl<'a, 'b, T> ops::IndexMut<&'b Pointer<T>> for WriteLock<'a, T> {
+    #[inline]
     fn index_mut(&mut self, pointer: &'b Pointer<T>) -> &mut T {
         debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
         debug_assert!(pointer.index < self.guard.data.len());
@@ -386,6 +398,7 @@ impl<'a, 'b, T> ops::IndexMut<&'b Pointer<T>> for WriteLock<'a, T> {
 
 impl<'a, T> WriteLock<'a, T> {
     /// Iterate all components in this locked storage.
+    #[inline]
     pub fn iter<'b>(&'b mut self) -> WriteIter<'b, 'a, T> {
         WriteIter {
             lock: self,
@@ -395,6 +408,7 @@ impl<'a, T> WriteLock<'a, T> {
     }
 
     /// Iterate all components that are still referenced by something.
+    #[inline]
     pub fn iter_alive<'b>(&'b mut self) -> WriteIter<'b, 'a, T> {
         WriteIter {
             lock: self,
