@@ -22,23 +22,44 @@ However, CGS has a number of advantages:
 
 use std::marker::PhantomData;
 use std::{mem, ops};
-use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak};
+use std::vec::Drain;
 
 /// Reference counter type. It doesn't make sense to allocate too much bit for it in regular applications.
 // TODO: control by a cargo feature
 type RefCount = u16;
 
+/// Epoch type determines the number of overwrites of components in storage.
+/// TODO: control by a cargo feature
+type Epoch = u16;
+
+/// The error type which is returned from upgrading WeakPointer.
+#[derive(Debug)]
+pub enum UpgradeErr {
+    /// Storage has been dropped.
+    DeadStorage,
+    /// Specific component in storage has been dropped or there are no `Pointer`s to it.
+    DeadComponent,
+}
+
 /// Inner storage data that is locked by `RwLock`.
 struct StorageInner<T> {
     data: Vec<T>,
     meta: Vec<RefCount>,
-    free_list: Vec<usize>,
+    free_list: Vec<(usize, Epoch)>,
 }
 
 /// Pending reference counts updates.
 struct Pending {
     add_ref: Vec<usize>,
     sub_ref: Vec<usize>,
+    epoch: Vec<Epoch>,
+}
+
+impl Pending {
+    fn drain_sub(&mut self) -> (Drain<usize>, &mut [Epoch]) {
+        (self.sub_ref.drain(..), self.epoch.as_mut_slice())
+    }
 }
 
 /// Shared pointer to the inner storage.
@@ -55,10 +76,53 @@ pub struct Storage<T>(StorageRef<T>, PendingRef);
 /// The pointer also holds the storage alive and knows the index of the element to look up.
 pub struct Pointer<T> {
     index: usize,
+    epoch: Epoch,
     target: StorageRef<T>,
     pending: PendingRef,
 }
 
+impl<T> Pointer<T> {
+    /// Creates a new `WeakPointer` to this component.
+    pub fn downgrade(&self) -> WeakPointer<T> {
+        WeakPointer {
+            index: self.index,
+            epoch: self.epoch,
+            target: Arc::downgrade(&self.target),
+            pending: self.pending.clone(),
+        }
+    }
+}
+
+/// Weak variant of `Pointer`.
+pub struct WeakPointer<T> {
+    index: usize,
+    epoch: Epoch,
+    target: Weak<RwLock<StorageInner<T>>>,
+    pending: PendingRef,
+}
+
+impl<T> WeakPointer<T> {
+    /// Upgrades the `WeakPointer` to a `Pointer`, if possible.
+    /// Returns `Err` if the strong count has reached zero or the inner value was destroyed.
+    pub fn upgrade(&self) -> Result<Pointer<T>, UpgradeErr> {
+        match self.target.upgrade() {
+            Some(target) => {
+                let mut pending = self.pending.lock().unwrap();
+                if pending.epoch[self.index] != self.epoch {
+                    return Err(UpgradeErr::DeadComponent);
+                }
+                pending.add_ref.push(self.index);
+                Ok(Pointer {
+                    index: self.index,
+                    epoch: self.epoch,
+                    target: target,
+                    pending: self.pending.clone(),
+                })
+            },
+            None => Err(UpgradeErr::DeadStorage),
+        }
+    }
+}
 
 /// Read lock on the storage, allows multiple clients to read from the same storage simultaneously.
 pub struct ReadLock<'a, T: 'a> {
@@ -94,6 +158,7 @@ impl<T> Storage<T> {
         let pending = Pending {
             add_ref: Vec::new(),
             sub_ref: Vec::new(),
+            epoch: Vec::new(),
         };
         Storage(Arc::new(RwLock::new(inner)),
                 Arc::new(Mutex::new(pending)))
@@ -134,10 +199,12 @@ impl<T> Storage<T> {
         for index in pending.add_ref.drain(..) {
             s.meta[index] += 1;
         }
-        for index in pending.sub_ref.drain(..) {
+        let (refs, mut epoch) = pending.drain_sub();
+        for index in refs {
             s.meta[index] -= 1;
             if s.meta[index] == 0 {
-                s.free_list.push(index);
+                epoch[index] += 1;
+                s.free_list.push((index, epoch[index]));
             }
         }
         // return the lock
@@ -154,6 +221,18 @@ impl<T> Clone for Pointer<T> {
         self.pending.lock().unwrap().add_ref.push(self.index);
         Pointer {
             index: self.index,
+            epoch: self.epoch,
+            target: self.target.clone(),
+            pending: self.pending.clone(),
+        }
+    }
+}
+
+impl<T> Clone for WeakPointer<T> {
+    fn clone(&self) -> WeakPointer<T> {
+        WeakPointer {
+            index: self.index,
+            epoch: self.epoch,
             target: self.target.clone(),
             pending: self.pending.clone(),
         }
@@ -233,9 +312,11 @@ impl<'a, T> ReadLock<'a, T> {
 
     /// Pin an iterated item with a newly created `Pointer`.
     pub fn pin(&self, item: &ReadItem<'a, T>) -> Pointer<T> {
-        self.pending.lock().unwrap().add_ref.push(item.index);
+        let mut pending = self.pending.lock().unwrap();
+        pending.add_ref.push(item.index);
         Pointer {
             index: item.index,
+            epoch: pending.epoch[item.index],
             target: self.storage.clone(),
             pending: self.pending.clone(),
         }
@@ -316,10 +397,11 @@ impl<'a, T> WriteLock<'a, T> {
 
     /// Pin an iterated item with a newly created `Pointer`.
     pub fn pin(&mut self, item: &WriteItem<'a, T>) -> Pointer<T> {
-        // self.guard.meta[item.index] += 1; // requires mutable borrow
-        self.pending.lock().unwrap().add_ref.push(item.index);
+        let mut pending = self.pending.lock().unwrap();
+        pending.add_ref.push(item.index);
         Pointer {
             index: item.index,
+            epoch: pending.epoch[item.index],
             target: self.storage.clone(),
             pending: self.pending.clone(),
         }
@@ -332,6 +414,7 @@ impl<'a, T> WriteLock<'a, T> {
                 *meta += 1;
                 Some(Pointer {
                     index: 0,
+                    epoch: self.pending.lock().unwrap().epoch[0],
                     target: self.storage.clone(),
                     pending: self.pending.clone(),
                 })
@@ -357,22 +440,24 @@ impl<'a, T> WriteLock<'a, T> {
 
     /// Add a new component to the storage, returning the `Pointer` to it.
     pub fn create(&mut self, value: T) -> Pointer<T> {
-        let index = match self.guard.free_list.pop() {
-            Some(i) => {
+        let (index, epoch) = match self.guard.free_list.pop() {
+            Some((i, e)) => {
                 debug_assert_eq!(self.guard.meta[i], 0);
                 self.guard.data[i] = value;
                 self.guard.meta[i] = 1;
-                i
+                (i, e)
             },
             None => {
                 debug_assert_eq!(self.guard.data.len(), self.guard.meta.len());
                 self.guard.data.push(value);
                 self.guard.meta.push(1);
-                self.guard.meta.len() - 1
+                self.pending.lock().unwrap().epoch.push(0);
+                (self.guard.meta.len() - 1, 0)
             },
         };
         Pointer {
             index: index,
+            epoch: epoch,
             target: self.storage.clone(),
             pending: self.pending.clone(),
         }
