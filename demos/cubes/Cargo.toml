@@ -7,6 +7,6 @@ workspace = "../../"
 [dependencies]
 cgmath = "0.14"
 froggy = { path = "../../" }
-gfx = "0.15"
-gfx_window_glutin = "0.15"
-glutin = "0.7"
+gfx = "0.16"
+gfx_window_glutin = "0.16"
+glutin = "0.8"

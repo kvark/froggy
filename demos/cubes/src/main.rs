@@ -262,8 +262,9 @@ fn main() {
     let builder = glutin::WindowBuilder::new()
         .with_title("Froggy Cube-ception".to_string())
         .with_vsync();
+    let event_loop = glutin::EventsLoop::new();
     let (window, mut device, mut factory, main_color, main_depth) =
-        gfx_window_glutin::init::<ColorFormat, DepthFormat>(builder);
+        gfx_window_glutin::init::<ColorFormat, DepthFormat>(builder, &event_loop);
     let mut encoder = gfx::Encoder::from(factory.create_command_buffer());
 
     let (cube_vbuf, mut cube_slice) = create_geometry(&mut factory);
@@ -296,21 +297,24 @@ fn main() {
 
     let mut instances = Vec::new();
     let mut moment = time::Instant::now();
+    let mut running = true;
 
-    'main: loop {
+    while running {
         // process events
-        for event in window.poll_events() {
+        event_loop.poll_events(|glutin::Event::WindowEvent {event, ..}| {
+            use glutin::WindowEvent as Event;
             match event {
-                glutin::Event::KeyboardInput(_, _, Some(glutin::VirtualKeyCode::Escape)) |
-                glutin::Event::Closed => break 'main,
-                glutin::Event::Resized(width, height) => {
+                Event::KeyboardInput(_, _, Some(glutin::VirtualKeyCode::Escape), _) |
+                Event::Closed => running = false,
+                Event::Resized(width, height) => {
                     gfx_window_glutin::update_views(&window, &mut data.out_color, &mut data.out_depth);
                     let globals = make_globals(camera_pos, width as f32 / height as f32);
                     encoder.update_constant_buffer(&data.globals, &globals);
                 },
                 _ => (),
             }
-        }
+        });
+
         // get time delta
         let duration = moment.elapsed();
         let delta = duration.as_secs() as f32 + (duration.subsec_nanos() as f32 * 1.0e-9);
