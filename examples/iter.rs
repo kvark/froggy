@@ -1,7 +1,7 @@
 extern crate froggy;
 
 fn main() {
-    let storage = froggy::Storage::new();
+    let mut storage = froggy::Storage::new();
     {
         let mut s = storage.write();
         for &v in [5 as i32, 7, 4, 6, 7].iter() {

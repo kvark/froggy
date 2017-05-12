@@ -232,8 +232,8 @@ const SPEEDS: [f32; 6] = [
 
 fn main() {
     // feed Froggy
-    let node_store = froggy::Storage::new();
-    let material_store = froggy::Storage::new();
+    let mut node_store = froggy::Storage::new();
+    let mut material_store = froggy::Storage::new();
     {
         let mut materials = material_store.write();
         for &color in COLORS.iter() {
@@ -242,7 +242,7 @@ fn main() {
             });
         }
     }
-    let level_store = froggy::Storage::new();
+    let mut level_store = froggy::Storage::new();
     {
         let mut levels = level_store.write();
         for &speed in SPEEDS.iter() {

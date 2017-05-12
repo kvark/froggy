@@ -17,7 +17,7 @@ Check [ecs_bench](https://github.com/lschmierer/ecs_bench) for performance compa
 extern crate froggy;
 
 fn main() {
-    let positions = froggy::Storage::new();
+    let mut positions = froggy::Storage::new();
     // create entities
     let entities = {
         let mut p = positions.write();

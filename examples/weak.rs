@@ -13,7 +13,7 @@ impl Drop for Node {
 }
 
 fn main() {
-    let storage = Storage::new();
+    let mut storage = Storage::new();
     let node1 = storage.write().create(Node {
         value: "Node 1".to_string(),
         next: None,

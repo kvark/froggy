@@ -4,7 +4,7 @@ use froggy::Storage;
 
 #[test]
 fn change_by_pointer() {
-    let storage = Storage::new();
+    let mut storage = Storage::new();
     {
         let mut s = storage.write();
         s.create(4 as i32);
@@ -21,7 +21,7 @@ fn change_by_pointer() {
 
 #[test]
 fn iterating() {
-    let storage = Storage::new();
+    let mut storage = Storage::new();
     {
         let mut s = storage.write();
         for &i in [5 as i32, 7, 4, 6, 7].iter() {
@@ -36,7 +36,7 @@ fn iterating() {
 
 #[test]
 fn iter_alive() {
-    let storage = Storage::new();
+    let mut storage = Storage::new();
     {
         let mut w = storage.write();
         for i in 0..5 {
@@ -57,7 +57,7 @@ fn iter_alive() {
 
 #[test]
 fn pointer_iter() {
-    let storage = Storage::new();
+    let mut storage = Storage::new();
     {
         let mut w = storage.write();
         for i in 0..5 {
@@ -77,7 +77,7 @@ fn pointer_iter() {
 
 #[test]
 fn weak_upgrade_downgrade() {
-    let storage = Storage::new();
+    let mut storage = Storage::new();
     let ptr = storage.write().create(1 as i32);
     let _write = storage.write();
     let weak = ptr.downgrade();
@@ -86,15 +86,15 @@ fn weak_upgrade_downgrade() {
 
 #[test]
 fn weak_epoch() {
-    let storage = Storage::new();
+    let mut storage = Storage::new();
     let weak = {
         let node1 = storage.write().create(1 as i32);
         assert_eq!(storage.write().iter_alive().count(), 1);
         node1.downgrade()
     };
     assert_eq!(storage.write().iter_alive().count(), 0);
-    assert_eq!(weak.upgrade(), Err(froggy::UpgradeErr::DeadComponent));
+    assert_eq!(weak.upgrade(), Err(froggy::DeadComponentError));
     let _ptr = storage.write().create(1 as i32);
     assert_eq!(storage.write().iter_alive().count(), 1);
-    assert_eq!(weak.upgrade(), Err(froggy::UpgradeErr::DeadComponent));
+    assert_eq!(weak.upgrade(), Err(froggy::DeadComponentError));
 }
