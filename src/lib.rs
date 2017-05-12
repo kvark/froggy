@@ -68,7 +68,11 @@ impl Pending {
 type PendingRef = Arc<Mutex<Pending>>;
 /// Component storage type.
 /// Manages the components and allows for efficient processing.
-pub struct Storage<T>(StorageInner<T>, PendingRef, StorageId);
+pub struct Storage<T> {
+    inner: StorageInner<T>,
+    pending: PendingRef,
+    id: StorageId,
+}
 
 /// A pointer to a component of type `T`.
 /// The component is guaranteed to be accessible for as long as this pointer is alive.
@@ -162,9 +166,11 @@ impl<T> Storage<T> {
             sub_ref: Vec::new(),
             epoch: Vec::new(),
         };
-        Storage(inner,
-                Arc::new(Mutex::new(pending)),
-                uid)
+        Storage {
+            inner: inner,
+            pending: Arc::new(Mutex::new(pending)),
+            id: uid,
+        }
     }
 
     /// Create a new empty storage.
@@ -189,32 +195,32 @@ impl<T> Storage<T> {
     #[inline]
     pub fn read(&self) -> ReadLock<T> {
         ReadLock {
-            storage: &self.0,
-            storage_id: self.2,
-            pending: self.1.clone(),
+            storage: &self.inner,
+            storage_id: self.id,
+            pending: self.pending.clone(),
         }
     }
 
     /// Lock the storage for writing. This operation will block untill all the locks are done.
     pub fn write(&mut self) -> WriteLock<T> {
         // process the pending refcount changes
-        let mut pending = self.1.lock().unwrap();
+        let mut pending = self.pending.lock().unwrap();
         for index in pending.add_ref.drain(..) {
-            self.0.meta[index] += 1;
+            self.inner.meta[index] += 1;
         }
         let (refs, mut epoch) = pending.drain_sub();
         for index in refs {
-            self.0.meta[index] -= 1;
-            if self.0.meta[index] == 0 {
+            self.inner.meta[index] -= 1;
+            if self.inner.meta[index] == 0 {
                 epoch[index] += 1;
-                self.0.free_list.push((index, epoch[index]));
+                self.inner.free_list.push((index, epoch[index]));
             }
         }
         // return the lock
         WriteLock {
-            storage: &mut self.0,
-            storage_id: self.2,
-            pending: self.1.clone(),
+            storage: &mut self.inner,
+            storage_id: self.id,
+            pending: self.pending.clone(),
         }
     }
 }
