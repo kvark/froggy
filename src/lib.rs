@@ -165,7 +165,7 @@ impl<'a, T> ops::IndexMut<&'a Pointer<T>> for Storage<T> {
 
 impl<T> Storage<T> {
     fn from_inner(inner: StorageInner<T>) -> Storage<T> {
-        let uid = STORAGE_UID.fetch_add(1, Ordering::Relaxed) as u8;
+        let uid = STORAGE_UID.fetch_add(1, Ordering::Relaxed) as StorageId;
         let pending = Pending {
             add_ref: Vec::new(),
             sub_ref: Vec::new(),
