@@ -129,16 +129,9 @@ impl<T> WeakPointer<T> {
     }
 }
 
-/// Read lock on the storage, allows multiple clients to read from the same storage simultaneously.
-pub struct ReadLock<'a, T: 'a> {
-    storage: &'a StorageInner<T>,
-    storage_id: StorageId,
-    pending: PendingRef,
-}
-
 /// Iterator for reading components.
 pub struct ReadIter<'a, T: 'a> {
-    lock: &'a ReadLock<'a, T>,
+    storage: &'a StorageInner<T>,
     skip_lost: bool,
     index: usize,
 }
@@ -157,6 +150,16 @@ pub struct WriteIter<'b, 'a: 'b, T: 'a> {
     index: usize,
 }
 
+
+impl<'a, T> ops::Index<&'a Pointer<T>> for Storage<T> {
+    type Output = T;
+    #[inline]
+    fn index(&self, pointer: &'a Pointer<T>) -> &T {
+        debug_assert_eq!(self.id, pointer.storage_id);
+        debug_assert!(pointer.index < self.inner.data.len());
+        unsafe { self.inner.data.get_unchecked(pointer.index) }
+    }
+}
 
 impl<T> Storage<T> {
     fn from_inner(inner: StorageInner<T>) -> Storage<T> {
@@ -191,16 +194,6 @@ impl<T> Storage<T> {
         })
     }
 
-    /// Lock the storage for reading. This operation will block until the write locks are done.
-    #[inline]
-    pub fn read(&self) -> ReadLock<T> {
-        ReadLock {
-            storage: &self.inner,
-            storage_id: self.id,
-            pending: self.pending.clone(),
-        }
-    }
-
     /// Lock the storage for writing. This operation will block untill all the locks are done.
     pub fn write(&mut self) -> WriteLock<T> {
         // process the pending refcount changes
@@ -221,6 +214,39 @@ impl<T> Storage<T> {
             storage: &mut self.inner,
             storage_id: self.id,
             pending: self.pending.clone(),
+        }
+    }
+
+    /// Iterate all components in this storage.
+    #[inline]
+    pub fn iter(&self) -> ReadIter<T> {
+        ReadIter {
+            storage: &self.inner,
+            skip_lost: false,
+            index: 0,
+        }
+    }
+
+    /// Iterate all components that are still referenced by something.
+    #[inline]
+    pub fn iter_alive(&self) -> ReadIter<T> {
+        ReadIter {
+            storage: &self.inner,
+            skip_lost: true,
+            index: 0,
+        }
+    }
+
+    /// Pin an iterated item with a newly created `Pointer`.
+    pub fn pin(&self, item: &ReadItem<T>) -> Pointer<T> {
+        let mut pending = self.pending.lock().unwrap();
+        pending.add_ref.push(item.index);
+        Pointer {
+            index: item.index,
+            epoch: pending.epoch[item.index],
+            storage_id: self.id,
+            pending: self.pending.clone(),
+            marker: PhantomData,
         }
     }
 }
@@ -286,61 +312,16 @@ impl<'a, T> Iterator for ReadIter<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let id = self.index;
-            if id == self.lock.storage.data.len() {
+            if id == self.storage.data.len() {
                 return None
             }
             self.index += 1;
-            if !self.skip_lost || self.lock.storage.meta[id] != 0 {
+            if !self.skip_lost || self.storage.meta[id] != 0 {
                 return Some(ReadItem {
-                    value: &self.lock.storage.data[id],
+                    value: &self.storage.data[id],
                     index: id,
                 })
             }
-        }
-    }
-}
-
-impl<'a, 'b, T> ops::Index<&'b Pointer<T>> for ReadLock<'a, T> {
-    type Output = T;
-    #[inline]
-    fn index(&self, pointer: &'b Pointer<T>) -> &T {
-        debug_assert_eq!(self.storage_id, pointer.storage_id);
-        debug_assert!(pointer.index < self.storage.data.len());
-        unsafe { self.storage.data.get_unchecked(pointer.index) }
-    }
-}
-
-impl<'a, T> ReadLock<'a, T> {
-    /// Iterate all components in this locked storage.
-    #[inline]
-    pub fn iter(&'a self) -> ReadIter<'a, T> {
-        ReadIter {
-            lock: self,
-            skip_lost: false,
-            index: 0,
-        }
-    }
-
-    /// Iterate all components that are still referenced by something.
-    #[inline]
-    pub fn iter_alive(&'a self) -> ReadIter<'a, T> {
-        ReadIter {
-            lock: self,
-            skip_lost: true,
-            index: 0,
-        }
-    }
-
-    /// Pin an iterated item with a newly created `Pointer`.
-    pub fn pin(&self, item: &ReadItem<'a, T>) -> Pointer<T> {
-        let mut pending = self.pending.lock().unwrap();
-        pending.add_ref.push(item.index);
-        Pointer {
-            index: item.index,
-            epoch: pending.epoch[item.index],
-            storage_id: self.storage_id,
-            pending: self.pending.clone(),
-            marker: PhantomData,
         }
     }
 }

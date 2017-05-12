@@ -10,9 +10,8 @@ fn change_by_pointer() {
         s.create(4 as i32);
     }
     let ptr = {
-        let r = storage.read();
-        let item = r.iter().next().unwrap();
-        r.pin(&item)
+        let item = storage.iter().next().unwrap();
+        storage.pin(&item)
     };
     assert_eq!(storage.write()[&ptr], 4);
     storage.write()[&ptr] = 350 as i32;
@@ -28,10 +27,10 @@ fn iterating() {
             s.create(i);
         }
     }
-    assert_eq!(storage.read().iter().count(), 5);
-    assert_eq!(*storage.read().iter().nth(0).unwrap(), 5);
-    assert_eq!(*storage.read().iter().nth(1).unwrap(), 7);
-    assert!(storage.read().iter().find(|v| **v == 4).is_some());
+    assert_eq!(storage.iter().count(), 5);
+    assert_eq!(*storage.iter().nth(0).unwrap(), 5);
+    assert_eq!(*storage.iter().nth(1).unwrap(), 7);
+    assert!(storage.iter().find(|v| **v == 4).is_some());
 }
 
 #[test]
@@ -46,11 +45,10 @@ fn iter_alive() {
     assert_eq!(storage.write().iter().count(), 5);
     assert_eq!(storage.write().iter_alive().count(), 0);
     let ptr = {
-        let r = storage.read();
-        let item = r.iter().nth(0).unwrap();
-        r.pin(&item)
+        let item = storage.iter().nth(0).unwrap();
+        storage.pin(&item)
     };
-    assert_eq!(storage.read()[&ptr], 0);
+    assert_eq!(storage[&ptr], 0);
     assert_eq!(storage.write().iter().count(), 5);
     assert_eq!(storage.write().iter_alive().count(), 1);
 }

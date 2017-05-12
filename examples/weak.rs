@@ -26,10 +26,10 @@ fn main() {
     storage.write()[&node1].next = Some(node2.downgrade());
     storage.write()[&node2].next = Some(node1.downgrade());
 
-    for node in storage.read().iter() {
+    for node in storage.iter() {
         let value = node.next.as_ref().map_or("None".into(), |ref next| {
             let ptr = next.upgrade().unwrap();
-            storage.read()[&ptr].value.clone()
+            storage[&ptr].value.clone()
         });
         println!("{} has `next` field with value {}", node.value, value);
     }

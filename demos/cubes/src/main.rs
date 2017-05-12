@@ -121,8 +121,8 @@ struct Cube {
 }
 
 fn create_cubes(mut nodes: froggy::WriteLock<Node>,
-                materials: froggy::ReadLock<Material>,
-                levels: froggy::ReadLock<Level>)
+                materials: &froggy::Storage<Material>,
+                levels: &froggy::Storage<Level>)
                 -> Vec<Cube>
 {
     let root_mat = materials.iter().next().unwrap();
@@ -255,7 +255,7 @@ fn main() {
     //Note: we populated the storages, but the returned pointers are already dropped.
     // Thus, all will be lost if we lock for writing now, but locking for reading retains the
     // contents, and cube creation will add references to them, so they will stay alive.
-    let mut cubes = create_cubes(node_store.write(), material_store.read(), level_store.read());
+    let mut cubes = create_cubes(node_store.write(), &material_store, &level_store);
     println!("Initialized {} cubes on {} levels", cubes.len(), SPEEDS.len());
 
     // init window and graphics
@@ -328,9 +328,8 @@ fn main() {
         // animate local spaces
         {
             let mut nodes = node_store.write();
-            let levels = level_store.read();
             for cube in cubes.iter_mut() {
-                let level = &levels[&cube.level];
+                let level = &level_store[&cube.level];
                 let angle = cgmath::Rad(delta * level.speed);
                 nodes[&cube.node].local.concat_self(&Space {
                     disp: cgmath::Vector3::zero(),
@@ -359,9 +358,8 @@ fn main() {
         instances.clear();
         {
             let nodes = node_store.write();
-            let materials = material_store.read();
             for cube in cubes.iter_mut() {
-                let material = &materials[&cube.material];
+                let material = &material_store[&cube.material];
                 let space = &nodes[&cube.node].world;
                 instances.push(Instance {
                     offset_scale: space.disp.extend(space.scale).into(),
