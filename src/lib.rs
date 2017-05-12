@@ -21,7 +21,7 @@ However, CGS has a number of advantages:
 #![warn(missing_docs)]
 
 use std::marker::PhantomData;
-use std::{mem, ops};
+use std::ops;
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak};
 use std::vec::Drain;
 
@@ -451,16 +451,16 @@ impl<'a, T> WriteLock<'a, T> {
     /// Move the `Pointer` to the next element, if any.
     pub fn advance(&mut self, mut pointer: Pointer<T>) -> Option<Pointer<T>> {
         debug_assert_eq!(&*self.storage as *const _, &*pointer.target as *const _);
+        if pointer.index+1 >= self.guard.meta.len() {
+            // pointer is dropped here
+            return None
+        }
         self.guard.meta[pointer.index] -= 1;
         pointer.index += 1;
-        if pointer.index < self.guard.meta.len() {
-            self.guard.meta[pointer.index] += 1;
-            Some(pointer)
-        } else {
-            // the refcount is already updated
-            mem::forget(pointer);
-            None
-        }
+        let pending = self.pending.lock().unwrap(); //Note: this is unfortunate
+        self.guard.meta[pointer.index] += 1;
+        pointer.epoch = pending.epoch[pointer.index];
+        Some(pointer)
     }
 
     /// Add a new component to the storage, returning the `Pointer` to it.
