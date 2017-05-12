@@ -120,7 +120,7 @@ struct Cube {
     level: froggy::Pointer<Level>,
 }
 
-fn create_cubes(mut nodes: froggy::WriteLock<Node>,
+fn create_cubes(nodes: &mut froggy::Storage<Node>,
                 materials: &froggy::Storage<Material>,
                 levels: &froggy::Storage<Level>)
                 -> Vec<Cube>
@@ -234,28 +234,22 @@ fn main() {
     // feed Froggy
     let mut node_store = froggy::Storage::new();
     let mut material_store = froggy::Storage::new();
-    {
-        let mut materials = material_store.write();
-        for &color in COLORS.iter() {
-            materials.create(Material {
-                color: color,
-            });
-        }
-    }
+    let _materials: Vec<_> = COLORS.iter().map(|&color|
+        material_store.create(Material {
+            color: color,
+        })
+    ).collect();
     let mut level_store = froggy::Storage::new();
-    {
-        let mut levels = level_store.write();
-        for &speed in SPEEDS.iter() {
-            levels.create(Level {
-                speed: speed,
-            });
-        }
-    }
+    let _levels: Vec<_> = SPEEDS.iter().map(|&speed|
+        level_store.create(Level {
+            speed: speed,
+        })
+    ).collect();
 
     //Note: we populated the storages, but the returned pointers are already dropped.
     // Thus, all will be lost if we lock for writing now, but locking for reading retains the
     // contents, and cube creation will add references to them, so they will stay alive.
-    let mut cubes = create_cubes(node_store.write(), &material_store, &level_store);
+    let mut cubes = create_cubes(&mut node_store, &material_store, &level_store);
     println!("Initialized {} cubes on {} levels", cubes.len(), SPEEDS.len());
 
     // init window and graphics
@@ -326,47 +320,38 @@ fn main() {
         // more processing is done in parallel.
 
         // animate local spaces
-        {
-            let mut nodes = node_store.write();
-            for cube in cubes.iter_mut() {
-                let level = &level_store[&cube.level];
-                let angle = cgmath::Rad(delta * level.speed);
-                nodes[&cube.node].local.concat_self(&Space {
-                    disp: cgmath::Vector3::zero(),
-                    rot: cgmath::Quaternion::from_angle_z(angle),
-                    scale: 1.0,
-                });
-            }
+        for cube in cubes.iter_mut() {
+            let level = &level_store[&cube.level];
+            let angle = cgmath::Rad(delta * level.speed);
+            node_store[&cube.node].local.concat_self(&Space {
+                disp: cgmath::Vector3::zero(),
+                rot: cgmath::Quaternion::from_angle_z(angle),
+                scale: 1.0,
+            });
         }
 
         // re-compute world spaces
-        {
-            let mut nodes = node_store.write();
-            let mut node_maybe = nodes.first();
-            while let Some(node_ptr) = node_maybe {
-                let local = nodes[&node_ptr].local;
-                let world = match nodes[&node_ptr].parent {
-                    Some(ref parent) => nodes[parent].world.concat(&local),
-                    None => local,
-                };
-                nodes[&node_ptr].world = world;
-                node_maybe = nodes.advance(node_ptr);
-            }
+        let mut node_maybe = node_store.first();
+        while let Some(node_ptr) = node_maybe {
+            let local = node_store[&node_ptr].local;
+            let world = match node_store[&node_ptr].parent {
+                Some(ref parent) => node_store[parent].world.concat(&local),
+                None => local,
+            };
+            node_store[&node_ptr].world = world;
+            node_maybe = node_store.advance(node_ptr);
         }
 
         // update instancing CPU info
         instances.clear();
-        {
-            let nodes = node_store.write();
-            for cube in cubes.iter_mut() {
-                let material = &material_store[&cube.material];
-                let space = &nodes[&cube.node].world;
-                instances.push(Instance {
-                    offset_scale: space.disp.extend(space.scale).into(),
-                    rotation: space.rot.v.extend(space.rot.s).into(),
-                    color: material.color,
-                });
-            }
+        for cube in cubes.iter_mut() {
+            let material = &material_store[&cube.material];
+            let space = &node_store[&cube.node].world;
+            instances.push(Instance {
+                offset_scale: space.disp.extend(space.scale).into(),
+                rotation: space.rot.v.extend(space.rot.s).into(),
+                color: material.color,
+            });
         }
 
         // update instancing GPU info

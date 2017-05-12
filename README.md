@@ -19,16 +19,12 @@ extern crate froggy;
 fn main() {
     let mut positions = froggy::Storage::new();
     // create entities
-    let entities = {
-        let mut p = positions.write();
-        vec![p.create(1u8), p.create(4u8), p.create(9u8)]
-    };
+    let entities = vec![
+        positions.create(1u8), positions.create(4u8), positions.create(9u8)
+    ];
     // update positions
-    {
-        let mut p = positions.write();
-        for e in &entities {
-            p[e] += 1;
-        }
+    for e in &entities {
+        positions[e] += 1;
     }
 }
 ```

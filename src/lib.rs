@@ -136,16 +136,9 @@ pub struct ReadIter<'a, T: 'a> {
     index: usize,
 }
 
-/// Write lock on the storage allows exclusive access.
-pub struct WriteLock<'a, T: 'a> {
-    storage: &'a mut StorageInner<T>,
-    storage_id: StorageId,
-    pending: PendingRef,
-}
-
 /// Iterator for writing components.
-pub struct WriteIter<'b, 'a: 'b, T: 'a> {
-    lock: &'b mut WriteLock<'a, T>,
+pub struct WriteIter<'a, T: 'a> {
+    storage: &'a mut StorageInner<T>,
     skip_lost: bool,
     index: usize,
 }
@@ -158,6 +151,15 @@ impl<'a, T> ops::Index<&'a Pointer<T>> for Storage<T> {
         debug_assert_eq!(self.id, pointer.storage_id);
         debug_assert!(pointer.index < self.inner.data.len());
         unsafe { self.inner.data.get_unchecked(pointer.index) }
+    }
+}
+
+impl<'a, T> ops::IndexMut<&'a Pointer<T>> for Storage<T> {
+    #[inline]
+    fn index_mut(&mut self, pointer: &'a Pointer<T>) -> &mut T {
+        debug_assert_eq!(self.id, pointer.storage_id);
+        debug_assert!(pointer.index < self.inner.data.len());
+        unsafe { self.inner.data.get_unchecked_mut(pointer.index) }
     }
 }
 
@@ -194,27 +196,30 @@ impl<T> Storage<T> {
         })
     }
 
-    /// Lock the storage for writing. This operation will block untill all the locks are done.
-    pub fn write(&mut self) -> WriteLock<T> {
+    fn sync<F, U>(&mut self, mut fun: F) -> U where
+        F: FnMut(&mut Pending) -> U
+    {
         // process the pending refcount changes
         let mut pending = self.pending.lock().unwrap();
         for index in pending.add_ref.drain(..) {
             self.inner.meta[index] += 1;
         }
-        let (refs, mut epoch) = pending.drain_sub();
-        for index in refs {
-            self.inner.meta[index] -= 1;
-            if self.inner.meta[index] == 0 {
-                epoch[index] += 1;
-                self.inner.free_list.push((index, epoch[index]));
+        {
+            let (refs, mut epoch) = pending.drain_sub();
+            for index in refs {
+                self.inner.meta[index] -= 1;
+                if self.inner.meta[index] == 0 {
+                    epoch[index] += 1;
+                    self.inner.free_list.push((index, epoch[index]));
+                }
             }
         }
-        // return the lock
-        WriteLock {
-            storage: &mut self.inner,
-            storage_id: self.id,
-            pending: self.pending.clone(),
-        }
+        fun(&mut *pending)
+    }
+
+    /// Wait for all the pending updates.
+    pub fn wait(&mut self) {
+        self.sync(|_| ());
     }
 
     /// Iterate all components in this storage.
@@ -237,6 +242,27 @@ impl<T> Storage<T> {
         }
     }
 
+    /// Iterate all components in this storage, mutably.
+    #[inline]
+    pub fn iter_mut(&mut self) -> WriteIter<T> {
+        WriteIter {
+            storage: &mut self.inner,
+            skip_lost: false,
+            index: 0,
+        }
+    }
+
+    /// Iterate all components that are still referenced by something, mutably.
+    #[inline]
+    pub fn iter_alive_mut(&mut self) -> WriteIter<T> {
+        self.wait();
+        WriteIter {
+            storage: &mut self.inner,
+            skip_lost: true,
+            index: 0,
+        }
+    }
+
     /// Pin an iterated item with a newly created `Pointer`.
     pub fn pin(&self, item: &ReadItem<T>) -> Pointer<T> {
         let mut pending = self.pending.lock().unwrap();
@@ -244,6 +270,80 @@ impl<T> Storage<T> {
         Pointer {
             index: item.index,
             epoch: pending.epoch[item.index],
+            storage_id: self.id,
+            pending: self.pending.clone(),
+            marker: PhantomData,
+        }
+    }
+
+    /// Pin an mutably iterated item with a newly created `Pointer`.
+    pub fn pin_mut(&mut self, item: &WriteItem<T>) -> Pointer<T> {
+        let epoch = self.sync(|pending| {
+            pending.add_ref.push(item.index);
+            pending.epoch[item.index]
+        });
+        Pointer {
+            index: item.index,
+            epoch: epoch,
+            storage_id: self.id,
+            pending: self.pending.clone(),
+            marker: PhantomData,
+        }
+    }
+
+    /// Get a `Pointer` to the first element of the storage.
+    pub fn first(&mut self) -> Option<Pointer<T>> {
+        let epoch = self.sync(|pending| pending.epoch[0]);
+        match self.inner.meta.first_mut() {
+            Some(meta) => {
+                *meta += 1;
+                Some(Pointer {
+                    index: 0,
+                    epoch: epoch,
+                    storage_id: self.id,
+                    pending: self.pending.clone(),
+                    marker: PhantomData,
+                })
+            },
+            None => None,
+        }
+    }
+
+    /// Move the `Pointer` to the next element, if any.
+    pub fn advance(&mut self, mut pointer: Pointer<T>) -> Option<Pointer<T>> {
+        debug_assert_eq!(self.id, pointer.storage_id);
+        if pointer.index+1 >= self.inner.meta.len() {
+            // pointer is dropped here
+            return None
+        }
+        self.inner.meta[pointer.index] -= 1;
+        pointer.index += 1;
+        self.inner.meta[pointer.index] += 1;
+        //Note: this is unfortunate
+        pointer.epoch = self.sync(|pending| pending.epoch[pointer.index]);
+        Some(pointer)
+    }
+
+    /// Add a new component to the storage, returning the `Pointer` to it.
+    pub fn create(&mut self, value: T) -> Pointer<T> {
+        let (index, epoch) = match self.inner.free_list.pop() {
+            Some((i, e)) => {
+                debug_assert_eq!(self.inner.meta[i], 0);
+                self.inner.data[i] = value;
+                self.inner.meta[i] = 1;
+                (i, e)
+            },
+            None => {
+                self.sync(|pending| pending.epoch.push(0));
+                debug_assert_eq!(self.inner.data.len(), self.inner.meta.len());
+                self.inner.data.push(value);
+                self.inner.meta.push(1);
+                (self.inner.meta.len() - 1, 0)
+            },
+        };
+        Pointer {
+            index: index,
+            epoch: epoch,
             storage_id: self.id,
             pending: self.pending.clone(),
             marker: PhantomData,
@@ -347,134 +447,22 @@ impl<'a, T> ops::DerefMut for WriteItem<'a, T> {
     }
 }
 
-impl<'b, 'a, T> Iterator for WriteIter<'b, 'a, T> {
+impl<'a, T> Iterator for WriteIter<'a, T> {
     type Item = WriteItem<'a, T>;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let id = self.index;
-            if id == self.lock.storage.data.len() {
+            if id == self.storage.data.len() {
                 return None
             }
             self.index += 1;
-            if !self.skip_lost || self.lock.storage.meta[id] != 0 {
+            if !self.skip_lost || self.storage.meta[id] != 0 {
                 return Some(WriteItem {
-                    base: self.lock.storage.data.as_mut_ptr(),
+                    base: self.storage.data.as_mut_ptr(),
                     index: id,
                     marker: PhantomData,
                 })
             }
-        }
-    }
-}
-
-impl<'a, 'b, T> ops::Index<&'b Pointer<T>> for WriteLock<'a, T> {
-    type Output = T;
-    #[inline]
-    fn index(&self, pointer: &'b Pointer<T>) -> &T {
-        debug_assert_eq!(self.storage_id, pointer.storage_id);
-        debug_assert!(pointer.index < self.storage.data.len());
-        unsafe { self.storage.data.get_unchecked(pointer.index) }
-    }
-}
-
-impl<'a, 'b, T> ops::IndexMut<&'b Pointer<T>> for WriteLock<'a, T> {
-    #[inline]
-    fn index_mut(&mut self, pointer: &'b Pointer<T>) -> &mut T {
-        debug_assert_eq!(self.storage_id, pointer.storage_id);
-        debug_assert!(pointer.index < self.storage.data.len());
-        unsafe { self.storage.data.get_unchecked_mut(pointer.index) }
-    }
-}
-
-impl<'a, T> WriteLock<'a, T> {
-    /// Iterate all components in this locked storage.
-    #[inline]
-    pub fn iter<'b>(&'b mut self) -> WriteIter<'b, 'a, T> {
-        WriteIter {
-            lock: self,
-            skip_lost: false,
-            index: 0,
-        }
-    }
-
-    /// Iterate all components that are still referenced by something.
-    #[inline]
-    pub fn iter_alive<'b>(&'b mut self) -> WriteIter<'b, 'a, T> {
-        WriteIter {
-            lock: self,
-            skip_lost: true,
-            index: 0,
-        }
-    }
-
-    /// Pin an iterated item with a newly created `Pointer`.
-    pub fn pin(&mut self, item: &WriteItem<'a, T>) -> Pointer<T> {
-        let mut pending = self.pending.lock().unwrap();
-        pending.add_ref.push(item.index);
-        Pointer {
-            index: item.index,
-            epoch: pending.epoch[item.index],
-            storage_id: self.storage_id,
-            pending: self.pending.clone(),
-            marker: PhantomData,
-        }
-    }
-
-    /// Get a `Pointer` to the first element of the storage.
-    pub fn first(&mut self) -> Option<Pointer<T>> {
-        match self.storage.meta.first_mut() {
-            Some(meta) => {
-                *meta += 1;
-                Some(Pointer {
-                    index: 0,
-                    epoch: self.pending.lock().unwrap().epoch[0],
-                    storage_id: self.storage_id,
-                    pending: self.pending.clone(),
-                    marker: PhantomData,
-                })
-            },
-            None => None,
-        }
-    }
-
-    /// Move the `Pointer` to the next element, if any.
-    pub fn advance(&mut self, mut pointer: Pointer<T>) -> Option<Pointer<T>> {
-        debug_assert_eq!(self.storage_id, pointer.storage_id);
-        if pointer.index+1 >= self.storage.meta.len() {
-            // pointer is dropped here
-            return None
-        }
-        self.storage.meta[pointer.index] -= 1;
-        pointer.index += 1;
-        let pending = self.pending.lock().unwrap(); //Note: this is unfortunate
-        self.storage.meta[pointer.index] += 1;
-        pointer.epoch = pending.epoch[pointer.index];
-        Some(pointer)
-    }
-
-    /// Add a new component to the storage, returning the `Pointer` to it.
-    pub fn create(&mut self, value: T) -> Pointer<T> {
-        let (index, epoch) = match self.storage.free_list.pop() {
-            Some((i, e)) => {
-                debug_assert_eq!(self.storage.meta[i], 0);
-                self.storage.data[i] = value;
-                self.storage.meta[i] = 1;
-                (i, e)
-            },
-            None => {
-                debug_assert_eq!(self.storage.data.len(), self.storage.meta.len());
-                self.storage.data.push(value);
-                self.storage.meta.push(1);
-                self.pending.lock().unwrap().epoch.push(0);
-                (self.storage.meta.len() - 1, 0)
-            },
-        };
-        Pointer {
-            index: index,
-            epoch: epoch,
-            storage_id: self.storage_id,
-            pending: self.pending.clone(),
-            marker: PhantomData,
         }
     }
 }
