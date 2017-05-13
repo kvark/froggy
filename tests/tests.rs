@@ -29,8 +29,6 @@ fn iterating() {
 fn iter_alive() {
     let storage: Storage<_> = (0 .. 5).map(|i| i*3 as i32).collect();
     assert_eq!(storage.iter().count(), 5);
-    drop(ptrs);
-    storage.wait();
     assert_eq!(storage.iter_alive().count(), 0);
 }
 
