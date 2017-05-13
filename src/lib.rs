@@ -26,6 +26,8 @@ use std::ops;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::vec::Drain;
+mod bitfield;
+use bitfield::PointerData;
 
 /// Reference counter type. It doesn't make sense to allocate too much bit for it in regular applications.
 // TODO: control by a cargo feature
@@ -86,9 +88,7 @@ pub struct Storage<T> {
 /// The pointer also holds the storage alive and knows the index of the element to look up.
 #[derive(Debug)]
 pub struct Pointer<T> {
-    index: usize,
-    epoch: Epoch,
-    storage_id: StorageId,
+    data: PointerData,
     pending: PendingRef,
     marker: PhantomData<T>,
 }
@@ -98,9 +98,7 @@ impl<T> Pointer<T> {
     #[inline]
     pub fn downgrade(&self) -> WeakPointer<T> {
         WeakPointer {
-            index: self.index,
-            epoch: self.epoch,
-            storage_id: self.storage_id,
+            data: self.data,
             pending: self.pending.clone(),
             marker: PhantomData,
         }
@@ -109,9 +107,7 @@ impl<T> Pointer<T> {
 
 /// Weak variant of `Pointer`.
 pub struct WeakPointer<T> {
-    index: usize,
-    epoch: Epoch,
-    storage_id: StorageId,
+    data: PointerData,
     pending: PendingRef,
     marker: PhantomData<T>,
 }
@@ -121,14 +117,12 @@ impl<T> WeakPointer<T> {
     /// Returns `Err` if the strong count has reached zero or the inner value was destroyed.
     pub fn upgrade(&self) -> Result<Pointer<T>, DeadComponentError> {
         let mut pending = self.pending.lock().unwrap();
-        if pending.get_epoch(self.index) != self.epoch {
+        if pending.get_epoch(self.data.get_index()) != self.data.get_epoch() {
             return Err(DeadComponentError);
         }
-        pending.add_ref.push(self.index);
+        pending.add_ref.push(self.data.get_index());
         Ok(Pointer {
-            index: self.index,
-            epoch: self.epoch,
-            storage_id: self.storage_id,
+            data: self.data,
             pending: self.pending.clone(),
             marker: PhantomData,
         })
@@ -154,9 +148,9 @@ impl<'a, T> ops::Index<&'a Pointer<T>> for Storage<T> {
     type Output = T;
     #[inline]
     fn index(&self, pointer: &'a Pointer<T>) -> &T {
-        debug_assert_eq!(self.id, pointer.storage_id);
-        debug_assert!(pointer.index < self.inner.data.len());
-        unsafe { self.inner.data.get_unchecked(pointer.index) }
+        debug_assert_eq!(self.id, pointer.data.get_storage_id());
+        debug_assert!(pointer.data.get_index() < self.inner.data.len());
+        unsafe { self.inner.data.get_unchecked(pointer.data.get_index()) }
     }
 }
 
@@ -313,9 +307,11 @@ impl<T> Storage<T> {
         let mut pending = self.pending.lock().unwrap();
         pending.add_ref.push(item.index);
         Pointer {
-            index: item.index,
-            epoch: pending.get_epoch(item.index),
-            storage_id: self.id,
+            data: PointerData::new(
+                item.index,
+                pending.get_epoch(item.index),
+                self.id,
+            ),
             pending: self.pending.clone(),
             marker: PhantomData,
         }
@@ -328,9 +324,11 @@ impl<T> Storage<T> {
             pending.get_epoch(item.index)
         });
         Pointer {
-            index: item.index,
-            epoch: epoch,
-            storage_id: self.id,
+            data: PointerData::new(
+                item.index,
+                epoch,
+                self.id,
+            ),
             pending: self.pending.clone(),
             marker: PhantomData,
         }
@@ -343,9 +341,11 @@ impl<T> Storage<T> {
             Some(meta) => {
                 *meta += 1;
                 Some(Pointer {
-                    index: 0,
-                    epoch: epoch,
-                    storage_id: self.id,
+                    data: PointerData::new(
+                        0,
+                        epoch,
+                        self.id,
+                    ),
                     pending: self.pending.clone(),
                     marker: PhantomData,
                 })
@@ -356,16 +356,18 @@ impl<T> Storage<T> {
 
     /// Move the `Pointer` to the next element, if any.
     pub fn advance(&mut self, mut pointer: Pointer<T>) -> Option<Pointer<T>> {
-        debug_assert_eq!(self.id, pointer.storage_id);
-        if pointer.index+1 >= self.inner.meta.len() {
+        debug_assert_eq!(self.id, pointer.data.get_storage_id());
+        if pointer.data.get_index()+1 >= self.inner.meta.len() {
             // pointer is dropped here
             return None
         }
-        self.inner.meta[pointer.index] -= 1;
-        pointer.index += 1;
-        self.inner.meta[pointer.index] += 1;
+        self.inner.meta[pointer.data.get_index()] -= 1;
+        let index = pointer.data.get_index();
+        pointer.data.set_index(index + 1);
+        self.inner.meta[pointer.data.get_index()] += 1;
         //Note: this is unfortunate
-        pointer.epoch = self.sync(|pending| pending.epoch[pointer.index]);
+        let epoch = self.sync(|pending| pending.epoch[pointer.data.get_index()]);
+        pointer.data.set_epoch(epoch);
         Some(pointer)
     }
 
@@ -386,9 +388,11 @@ impl<T> Storage<T> {
             },
         };
         Pointer {
-            index: index,
-            epoch: epoch,
-            storage_id: self.id,
+            data: PointerData::new(
+                index,
+                epoch,
+                self.id
+            ),
             pending: self.pending.clone(),
             marker: PhantomData,
         }
@@ -398,11 +402,9 @@ impl<T> Storage<T> {
 impl<T> Clone for Pointer<T> {
     #[inline]
     fn clone(&self) -> Pointer<T> {
-        self.pending.lock().unwrap().add_ref.push(self.index);
+        self.pending.lock().unwrap().add_ref.push(self.data.get_index());
         Pointer {
-            index: self.index,
-            epoch: self.epoch,
-            storage_id: self.storage_id,
+            data: self.data,
             pending: self.pending.clone(),
             marker: PhantomData,
         }
@@ -413,9 +415,7 @@ impl<T> Clone for WeakPointer<T> {
     #[inline]
     fn clone(&self) -> WeakPointer<T> {
         WeakPointer {
-            index: self.index,
-            epoch: self.epoch,
-            storage_id: self.storage_id,
+            data: self.data,
             pending: self.pending.clone(),
             marker: PhantomData,
         }
@@ -425,15 +425,21 @@ impl<T> Clone for WeakPointer<T> {
 impl<T> PartialEq for Pointer<T> {
     #[inline]
     fn eq(&self, other: &Pointer<T>) -> bool {
-        self.index == other.index &&
-        self.storage_id == other.storage_id
+        self.data == other.data
+    }
+}
+
+impl<T> PartialEq for WeakPointer<T> {
+    #[inline]
+    fn eq(&self, other: &WeakPointer<T>) -> bool {
+        self.data == other.data
     }
 }
 
 impl<T> Drop for Pointer<T> {
     #[inline]
     fn drop(&mut self) {
-        self.pending.lock().unwrap().sub_ref.push(self.index);
+        self.pending.lock().unwrap().sub_ref.push(self.data.get_index());
     }
 }
 

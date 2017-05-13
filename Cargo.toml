@@ -16,3 +16,4 @@ Froggy is a prototype for the Component Graph System programming model. It aims 
 members = ["demos/cubes"]
 
 [dependencies]
+bit_field = "0.7.0"
