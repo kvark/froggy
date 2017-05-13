@@ -20,6 +20,7 @@ However, CGS has a number of advantages:
 */
 #![warn(missing_docs)]
 
+use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::ops;
 use std::sync::{Arc, Mutex};
@@ -168,37 +169,45 @@ impl<'a, T> ops::IndexMut<&'a Pointer<T>> for Storage<T> {
     }
 }
 
+impl<T> FromIterator<T> for Storage<T> {
+    fn from_iter<I>(iter: I) -> Self where I: IntoIterator<Item=T> {
+        let data: Vec<T> = iter.into_iter().collect();
+        let count = data.len();
+        Storage::new_impl(data, vec![0; count], vec![0; count])
+    }
+}
+
 impl<T> Storage<T> {
-    fn from_inner(inner: StorageInner<T>) -> Storage<T> {
+    fn new_impl(data: Vec<T>, meta: Vec<RefCount>, epoch: Vec<Epoch>) -> Storage<T> {
+        assert_eq!(data.len(), meta.len());
+        assert!(epoch.len() <= meta.len());
         let uid = STORAGE_UID.fetch_add(1, Ordering::Relaxed) as StorageId;
-        let pending = Pending {
-            add_ref: Vec::new(),
-            sub_ref: Vec::new(),
-            epoch: Vec::new(),
-        };
         Storage {
-            inner: inner,
-            pending: Arc::new(Mutex::new(pending)),
+            inner: StorageInner {
+                data: data,
+                meta: meta,
+                free_list: Vec::new(),
+            },
+            pending: Arc::new(Mutex::new(Pending {
+                add_ref: Vec::new(),
+                sub_ref: Vec::new(),
+                epoch: epoch,
+            })),
             id: uid,
         }
     }
 
     /// Create a new empty storage.
     pub fn new() -> Storage<T> {
-        Self::from_inner(StorageInner {
-            data: Vec::new(),
-            meta: Vec::new(),
-            free_list: Vec::new(),
-        })
+        Self::new_impl(Vec::new(), Vec::new(), Vec::new())
     }
 
     /// Create a new empty storage with specified capacity.
     pub fn with_capacity(capacity: usize) -> Storage<T> {
-        Self::from_inner(StorageInner {
-            data: Vec::with_capacity(capacity),
-            meta: Vec::with_capacity(capacity),
-            free_list: Vec::new(),
-        })
+        Self::new_impl(
+            Vec::with_capacity(capacity),
+            Vec::with_capacity(capacity),
+            Vec::with_capacity(capacity))
     }
 
     /// Process the pending refcount changes.

@@ -233,18 +233,10 @@ const SPEEDS: [f32; 6] = [
 fn main() {
     // feed Froggy
     let mut node_store = froggy::Storage::new();
-    let mut material_store = froggy::Storage::new();
-    for &color in &COLORS {
-        material_store.create(Material {
-            color: color,
-        });
-    }
-    let mut level_store = froggy::Storage::new();
-    for &speed in &SPEEDS {
-        level_store.create(Level {
-            speed: speed,
-        });
-    }
+    let material_store: froggy::Storage<_> =
+        COLORS.iter().map(|&color| Material { color: color }).collect();
+    let level_store: froggy::Storage<_> =
+        SPEEDS.iter().map(|&speed| Level { speed: speed }).collect();
 
     //Note: we populated the storages, but the returned pointers are already dropped.
     // Thus, all will be lost if we lock for writing now, but locking for reading retains the

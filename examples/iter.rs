@@ -1,10 +1,8 @@
 extern crate froggy;
 
 fn main() {
-    let mut storage = froggy::Storage::new();
-    for &v in [5 as i32, 7, 4, 6, 7].iter() {
-        storage.create(v);
-    }
+    let mut storage: froggy::Storage<i32> =
+        [5 as i32, 7, 4, 6, 7].iter().cloned().collect();
     println!("Initial array:");
     for value in storage.iter() {
         println!("Value {}", *value);
