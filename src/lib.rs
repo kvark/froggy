@@ -62,6 +62,11 @@ impl Pending {
     fn drain_sub(&mut self) -> (Drain<usize>, &mut [Epoch]) {
         (self.sub_ref.drain(..), self.epoch.as_mut_slice())
     }
+
+    #[inline]
+    fn get_epoch(&self, index: usize) -> Epoch {
+        *self.epoch.get(index).unwrap_or(&0)
+    }
 }
 
 /// Shared pointer to the pending updates.
@@ -115,7 +120,7 @@ impl<T> WeakPointer<T> {
     /// Returns `Err` if the strong count has reached zero or the inner value was destroyed.
     pub fn upgrade(&self) -> Result<Pointer<T>, DeadComponentError> {
         let mut pending = self.pending.lock().unwrap();
-        if pending.epoch[self.index] != self.epoch {
+        if pending.get_epoch(self.index) != self.epoch {
             return Err(DeadComponentError);
         }
         pending.add_ref.push(self.index);
@@ -196,14 +201,20 @@ impl<T> Storage<T> {
         })
     }
 
+    /// Process the pending refcount changes.
     fn sync<F, U>(&mut self, mut fun: F) -> U where
         F: FnMut(&mut Pending) -> U
     {
-        // process the pending refcount changes
         let mut pending = self.pending.lock().unwrap();
+        // missing epochs
+        while pending.epoch.len() < self.inner.data.len() {
+            pending.epoch.push(0);
+        }
+        // pending reference adds
         for index in pending.add_ref.drain(..) {
             self.inner.meta[index] += 1;
         }
+        // pending reference subs
         {
             let (refs, mut epoch) = pending.drain_sub();
             for index in refs {
@@ -214,11 +225,12 @@ impl<T> Storage<T> {
                 }
             }
         }
+        // other stuff
         fun(&mut *pending)
     }
 
-    /// Wait for all the pending updates.
-    pub fn wait(&mut self) {
+    /// Synchronize for all the pending updates.
+    pub fn sync_pending(&mut self) {
         self.sync(|_| ());
     }
 
@@ -255,7 +267,7 @@ impl<T> Storage<T> {
     /// Iterate all components that are still referenced by something, mutably.
     #[inline]
     pub fn iter_alive_mut(&mut self) -> WriteIter<T> {
-        self.wait();
+        self.sync_pending();
         WriteIter {
             storage: &mut self.inner,
             skip_lost: true,
@@ -269,7 +281,7 @@ impl<T> Storage<T> {
         pending.add_ref.push(item.index);
         Pointer {
             index: item.index,
-            epoch: pending.epoch[item.index],
+            epoch: pending.get_epoch(item.index),
             storage_id: self.id,
             pending: self.pending.clone(),
             marker: PhantomData,
@@ -280,7 +292,7 @@ impl<T> Storage<T> {
     pub fn pin_mut(&mut self, item: &WriteItem<T>) -> Pointer<T> {
         let epoch = self.sync(|pending| {
             pending.add_ref.push(item.index);
-            pending.epoch[item.index]
+            pending.get_epoch(item.index)
         });
         Pointer {
             index: item.index,
@@ -334,7 +346,6 @@ impl<T> Storage<T> {
                 (i, e)
             },
             None => {
-                self.sync(|pending| pending.epoch.push(0));
                 debug_assert_eq!(self.inner.data.len(), self.inner.meta.len());
                 self.inner.data.push(value);
                 self.inner.meta.push(1);

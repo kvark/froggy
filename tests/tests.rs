@@ -18,9 +18,9 @@ fn change_by_pointer() {
 #[test]
 fn iterating() {
     let mut storage = Storage::new();
-    let _ptrs: Vec<_> = [5 as i32, 7, 4, 6, 7].iter()
-        .map(|&i| storage.create(i))
-        .collect();
+    for &i in  &[5 as i32, 7, 4, 6, 7] {
+        storage.create(i);
+    }
     assert_eq!(storage.iter().count(), 5);
     assert_eq!(*storage.iter().nth(0).unwrap(), 5);
     assert_eq!(*storage.iter().nth(1).unwrap(), 7);
@@ -30,12 +30,11 @@ fn iterating() {
 #[test]
 fn iter_alive() {
     let mut storage = Storage::new();
-    let ptrs: Vec<_> = (0..5)
-        .map(|i| storage.create(i * 3 as i32))
-        .collect();
-    assert_eq!(storage.iter().count(), 5);
-    drop(ptrs);
-    storage.wait();
+    for i in 0 .. 5 {
+        storage.create(i * 3 as i32);
+    }
+    assert_eq!(storage.iter_alive().count(), 5);
+    storage.sync_pending();
     assert_eq!(storage.iter_alive().count(), 0);
 }
 

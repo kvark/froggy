@@ -234,17 +234,17 @@ fn main() {
     // feed Froggy
     let mut node_store = froggy::Storage::new();
     let mut material_store = froggy::Storage::new();
-    let _materials: Vec<_> = COLORS.iter().map(|&color|
+    for &color in &COLORS {
         material_store.create(Material {
             color: color,
-        })
-    ).collect();
+        });
+    }
     let mut level_store = froggy::Storage::new();
-    let _levels: Vec<_> = SPEEDS.iter().map(|&speed|
+    for &speed in &SPEEDS {
         level_store.create(Level {
             speed: speed,
-        })
-    ).collect();
+        });
+    }
 
     //Note: we populated the storages, but the returned pointers are already dropped.
     // Thus, all will be lost if we lock for writing now, but locking for reading retains the
