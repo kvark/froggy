@@ -26,7 +26,7 @@ fn main() {
     storage[&node1].next = Some(node2.downgrade());
     storage[&node2].next = Some(node1.downgrade());
 
-    for node in storage.iter() {
+    for node in &storage {
         let value = node.next.as_ref().map_or("None".into(), |ref next| {
             let ptr = next.upgrade().unwrap();
             storage[&ptr].value.clone()

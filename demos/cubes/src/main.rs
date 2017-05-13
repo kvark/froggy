@@ -179,7 +179,7 @@ fn create_cubes(nodes: &mut froggy::Storage<Node>,
             Some(item) => levels.pin(&item),
             None => continue,
         };
-        for child in children.iter() {
+        for child in &children {
             let cube = Cube {
                 node: nodes.create(Node {
                     local: child.clone(),

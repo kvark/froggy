@@ -13,7 +13,7 @@ fn main() {
     };
     storage[&ptr] = 350 as i32;
     println!("Array after change:");
-    for value in storage.iter() {
+    for value in &storage {
         println!("Value {}", *value);
     }
 }

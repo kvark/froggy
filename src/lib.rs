@@ -177,6 +177,30 @@ impl<T> FromIterator<T> for Storage<T> {
     }
 }
 
+impl<'a, T> IntoIterator for &'a Storage<T> {
+    type Item = ReadItem<'a, T>;
+    type IntoIter = ReadIter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        ReadIter {
+            storage: &self.inner,
+            skip_lost: false,
+            index: 0,
+        }
+    }
+}
+
+impl<'a, T> IntoIterator for &'a mut Storage<T> {
+    type Item = WriteItem<'a, T>;
+    type IntoIter = WriteIter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        WriteIter {
+            storage: &mut self.inner,
+            skip_lost: false,
+            index: 0,
+        }
+    }
+}
+
 impl<T> Storage<T> {
     fn new_impl(data: Vec<T>, meta: Vec<RefCount>, epoch: Vec<Epoch>) -> Storage<T> {
         assert_eq!(data.len(), meta.len());
