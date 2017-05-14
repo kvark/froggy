@@ -75,3 +75,15 @@ fn weak_epoch() {
     assert_eq!(storage.iter_alive_mut().count(), 1);
     assert_eq!(weak.upgrade(), Err(froggy::DeadComponentError));
 }
+
+#[test]
+fn cursor() {
+    let mut data = vec![5 as i32, 7, 4, 6, 7];
+    let mut storage: Storage<_> =
+        data.iter().cloned().collect();
+    let mut cursor = storage.cursor();
+    data.reverse();
+    while let Some(item) = cursor.next() {
+        assert_eq!(data.pop().as_ref(), Some(&*item));
+    }
+}

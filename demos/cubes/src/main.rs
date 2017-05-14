@@ -322,16 +322,15 @@ fn main() {
             });
         }
 
-        // re-compute world spaces
-        let mut node_maybe = node_store.first();
-        while let Some(node_ptr) = node_maybe {
-            let local = node_store[&node_ptr].local;
-            let world = match node_store[&node_ptr].parent {
-                Some(ref parent) => node_store[parent].world.concat(&local),
-                None => local,
-            };
-            node_store[&node_ptr].world = world;
-            node_maybe = node_store.advance(node_ptr);
+        // re-compute world spaces, using streaming iteration
+        {
+            let mut cursor = node_store.cursor();
+            while let Some(mut item) = cursor.next() {
+                item.world = match item.parent {
+                    Some(ref parent) => item.look_back(parent).unwrap().world.concat(&item.local),
+                    None => item.local,
+                };
+            }
         }
 
         // update instancing CPU info
