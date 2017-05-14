@@ -1,4 +1,4 @@
-use {Epoch, StorageId};
+use {Epoch, Index, StorageId};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct PointerData(u64);
@@ -14,7 +14,7 @@ const STORAGE_ID_MASK: u64 = ((1 << STORAGE_ID_BITS) - 1) << STORAGE_ID_OFFSET;
 
 impl PointerData {
     #[inline]
-    pub fn new(index: usize, epoch: Epoch, storage: StorageId) -> Self {
+    pub fn new(index: Index, epoch: Epoch, storage: StorageId) -> Self {
         let mut p = PointerData(0);
         p.set_index(index);
         p.set_epoch(epoch);
@@ -23,8 +23,8 @@ impl PointerData {
     }
 
     #[inline]
-    pub fn get_index(&self) -> usize {
-        (self.0 & INDEX_MASK) as usize
+    pub fn get_index(&self) -> Index {
+        (self.0 & INDEX_MASK) as Index
     }
 
     #[inline]
@@ -38,7 +38,7 @@ impl PointerData {
     }
 
     #[inline]
-    pub fn set_index(&mut self, value: usize) {
+    pub fn set_index(&mut self, value: Index) {
         debug_assert_eq!(value >> INDEX_BITS, 0);
         self.0 = (self.0 & !INDEX_MASK) + value as u64;
     }
@@ -64,6 +64,7 @@ mod tests {
     #[test]
     fn sizes() {
         assert_eq!(INDEX_BITS + EPOCH_BITS + STORAGE_ID_BITS, 64);
+        assert!(size_of::<Index>() * 8 >= INDEX_BITS as usize);
         assert!(size_of::<Epoch>() * 8 >= EPOCH_BITS as usize);
         assert!(size_of::<StorageId>() * 8 >= STORAGE_ID_BITS as usize);
     }

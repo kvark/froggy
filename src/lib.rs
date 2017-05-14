@@ -20,14 +20,17 @@ However, CGS has a number of advantages:
 */
 #![warn(missing_docs)]
 
+mod bitfield;
+
 use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::ops;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::vec::Drain;
-mod bitfield;
 use bitfield::PointerData;
+
+type Index = usize;
 
 /// Reference counter type. It doesn't make sense to allocate too much bit for it in regular applications.
 // TODO: control by a cargo feature
@@ -49,20 +52,20 @@ pub struct DeadComponentError;
 struct StorageInner<T> {
     data: Vec<T>,
     meta: Vec<RefCount>,
-    free_list: Vec<(usize, Epoch)>,
+    free_list: Vec<PointerData>,
 }
 
 /// Pending reference counts updates.
 #[derive(Debug)]
 struct Pending {
-    add_ref: Vec<usize>,
-    sub_ref: Vec<usize>,
+    add_ref: Vec<Index>,
+    sub_ref: Vec<Index>,
     epoch: Vec<Epoch>,
 }
 
 impl Pending {
     #[inline]
-    fn drain_sub(&mut self) -> (Drain<usize>, &mut [Epoch]) {
+    fn drain_sub(&mut self) -> (Drain<Index>, &mut [Epoch]) {
         (self.sub_ref.drain(..), self.epoch.as_mut_slice())
     }
 
@@ -133,14 +136,14 @@ impl<T> WeakPointer<T> {
 pub struct ReadIter<'a, T: 'a> {
     storage: &'a StorageInner<T>,
     skip_lost: bool,
-    index: usize,
+    index: Index,
 }
 
 /// Iterator for writing components.
 pub struct WriteIter<'a, T: 'a> {
     storage: &'a mut StorageInner<T>,
     skip_lost: bool,
-    index: usize,
+    index: Index,
 }
 
 
@@ -248,7 +251,8 @@ impl<T> Storage<T> {
                 self.inner.meta[index] -= 1;
                 if self.inner.meta[index] == 0 {
                     epoch[index] += 1;
-                    self.inner.free_list.push((index, epoch[index]));
+                    let data = PointerData::new(index, epoch[index], self.id);
+                    self.inner.free_list.push(data);
                 }
             }
         }
@@ -373,26 +377,23 @@ impl<T> Storage<T> {
 
     /// Add a new component to the storage, returning the `Pointer` to it.
     pub fn create(&mut self, value: T) -> Pointer<T> {
-        let (index, epoch) = match self.inner.free_list.pop() {
-            Some((i, e)) => {
+        let data = match self.inner.free_list.pop() {
+            Some(data) => {
+                let i = data.get_index();
                 debug_assert_eq!(self.inner.meta[i], 0);
                 self.inner.data[i] = value;
                 self.inner.meta[i] = 1;
-                (i, e)
+                data
             },
             None => {
                 debug_assert_eq!(self.inner.data.len(), self.inner.meta.len());
                 self.inner.data.push(value);
                 self.inner.meta.push(1);
-                (self.inner.meta.len() - 1, 0)
+                PointerData::new(i, 0, self.id)
             },
         };
         Pointer {
-            data: PointerData::new(
-                index,
-                epoch,
-                self.id
-            ),
+            data: data,
             pending: self.pending.clone(),
             marker: PhantomData,
         }
@@ -447,7 +448,7 @@ impl<T> Drop for Pointer<T> {
 /// The item of `ReadIter`.
 pub struct ReadItem<'a, T: 'a> {
     value: &'a T,
-    index: usize,
+    index: Index,
 }
 
 impl<'a, T> ops::Deref for ReadItem<'a, T> {
@@ -480,7 +481,7 @@ impl<'a, T> Iterator for ReadIter<'a, T> {
 /// The item of `WriteIter`.
 pub struct WriteItem<'a, T: 'a> {
     base: *mut T,
-    index: usize,
+    index: Index,
     marker: PhantomData<&'a mut T>,
 }
 
