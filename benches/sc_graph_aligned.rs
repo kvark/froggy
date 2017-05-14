@@ -42,15 +42,14 @@ fn build() -> World {
 
 
     {
-        for fx in 1 .. (N_POS_VEL + N_POS + 1) {
+        for _ in 0 .. N_POS_VEL {
             let pos_ptr = world.pos.create(Position { x: 0.0, y: 0.0 });
+	    	let v = Velocity { dx: 0.0, dy: 0.0, writes: pos_ptr};
+	        world.movement.vel_comp.push(world.vel.create(v));
+        }
 
-    	    // Every 10th Position has a Veloctiy
-    	    // This way we test for a 'more real' scenario
-    	    if fx % 10 == 0 {
-    	    	let v = Velocity { dx: 0.0, dy: 0.0, writes: pos_ptr};
-    	        world.movement.vel_comp.push(world.vel.create(v));
-    	    }
+        for _ in 0 .. N_POS {
+            world.pos.create(Position { x: 0.0, y: 0.0 });
         }
     }
 
