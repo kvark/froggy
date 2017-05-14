@@ -1,6 +1,13 @@
 extern crate froggy;
 
-use froggy::Storage;
+use froggy::{Pointer, Storage};
+
+#[test]
+fn sizes() {
+    use std::mem::size_of;
+    assert_eq!(size_of::<Pointer<()>>(), 16);
+    assert_eq!(size_of::<Option<Pointer<()>>>(), 16);
+}
 
 #[test]
 fn change_by_pointer() {
