@@ -40,23 +40,9 @@ fn iter_alive() {
 }
 
 #[test]
-fn pointer_iter() {
-    let mut storage: Storage<_> = (0 .. 5).collect();
-    let mut counter = 0;
-    let mut iter_ptr = storage.first();
-    while let Some(ptr) = iter_ptr {
-        assert_eq!(storage[&ptr], counter);
-        counter += 1;
-        iter_ptr = storage.advance(ptr);
-    }
-    assert_eq!(counter, 5);
-}
-
-#[test]
 fn weak_upgrade_downgrade() {
     let mut storage = Storage::new();
     let ptr = storage.create(1 as i32);
-    let _iter = storage.first();
     let weak = ptr.downgrade();
     assert_eq!(weak.upgrade().is_ok(), true);
 }
@@ -85,5 +71,6 @@ fn cursor() {
     data.reverse();
     while let Some(item) = cursor.next() {
         assert_eq!(data.pop().as_ref(), Some(&*item));
+        let _ptr = item.pin();
     }
 }

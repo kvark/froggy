@@ -150,6 +150,7 @@ pub struct WriteIter<'a, T: 'a> {
 /// and a capability to look back/ahead.
 pub struct Cursor<'a, T: 'a> {
     storage: &'a mut StorageInner<T>,
+    pending: &'a PendingRef,
     skip_lost: bool,
     index: Index,
     storage_id: StorageId,
@@ -330,63 +331,11 @@ impl<T> Storage<T> {
         }
     }
 
-    /// Pin an mutably iterated item with a newly created `Pointer`.
-    pub fn pin_mut(&mut self, item: &WriteItem<T>) -> Pointer<T> {
-        let epoch = self.sync(|pending| {
-            pending.add_ref.push(item.index);
-            pending.get_epoch(item.index)
-        });
-        Pointer {
-            data: PointerData::new(
-                item.index,
-                epoch,
-                self.id,
-            ),
-            pending: self.pending.clone(),
-            marker: PhantomData,
-        }
-    }
-
-    /// Get a `Pointer` to the first element of the storage.
-    pub fn first(&mut self) -> Option<Pointer<T>> {
-        let epoch = self.sync(|pending| pending.epoch[0]);
-        match self.inner.meta.first_mut() {
-            Some(meta) => {
-                *meta += 1;
-                Some(Pointer {
-                    data: PointerData::new(
-                        0,
-                        epoch,
-                        self.id,
-                    ),
-                    pending: self.pending.clone(),
-                    marker: PhantomData,
-                })
-            },
-            None => None,
-        }
-    }
-
-    /// Move the `Pointer` to the next element, if any.
-    pub fn advance(&mut self, mut pointer: Pointer<T>) -> Option<Pointer<T>> {
-        debug_assert_eq!(self.id, pointer.data.get_storage_id());
-        let index = pointer.data.get_index() + 1;
-        if index >= self.inner.meta.len() {
-            // pointer is dropped here
-            return None
-        }
-        self.inner.meta[index-1] -= 1;
-        self.inner.meta[index] += 1;
-        //Note: this is unfortunate
-        let epoch = self.sync(|pending| pending.epoch[index]);
-        pointer.data = PointerData::new(index, epoch, self.id);
-        Some(pointer)
-    }
-
     /// Produce a streaming mutable iterator.
     pub fn cursor(&mut self) -> Cursor<T> {
         Cursor {
             storage: &mut self.inner,
+            pending: &self.pending,
             skip_lost: false,
             index: 0,
             storage_id: self.id,
@@ -397,6 +346,7 @@ impl<T> Storage<T> {
     pub fn cursor_alive(&mut self) -> Cursor<T> {
         Cursor {
             storage: &mut self.inner,
+            pending: &self.pending,
             skip_lost: true,
             index: 0,
             storage_id: self.id,
@@ -552,6 +502,7 @@ impl<'a, T> Iterator for WriteIter<'a, T> {
 /// Item of the streaming iterator.
 pub struct CursorItem<'a, T: 'a> {
     slice: &'a mut [T],
+    pending: &'a PendingRef,
     data: PointerData,
 }
 
@@ -569,6 +520,20 @@ impl<'a, T> ops::DerefMut for CursorItem<'a, T> {
 }
 
 impl<'a, T> CursorItem<'a, T> {
+    /// Pin the item with a strong pointer.
+    pub fn pin(&self) -> Pointer<T> {
+        let epoch = {
+            let mut pending = self.pending.lock().unwrap();
+            pending.add_ref.push(self.data.get_index());
+            pending.get_epoch(self.data.get_index())
+        };
+        Pointer {
+            data: self.data.with_epoch(epoch),
+            pending: self.pending.clone(),
+            marker: PhantomData,
+        }
+    }
+
     /// Attempt to read an element before the cursor by a pointer.
     pub fn look_back(&self, pointer: &'a Pointer<T>) -> Option<&T> {
         debug_assert_eq!(pointer.data.get_storage_id(), self.data.get_storage_id());
@@ -606,6 +571,7 @@ impl<'a, T> Cursor<'a, T> {
                 return Some(CursorItem {
                     slice: &mut self.storage.data,
                     data: PointerData::new(id, 0, self.storage_id),
+                    pending: self.pending,
                 })
             }
         }

@@ -34,6 +34,11 @@ impl PointerData {
     pub fn get_storage_id(&self) -> StorageId {
         ((self.0 & STORAGE_ID_MASK) >> STORAGE_ID_OFFSET) as StorageId
     }
+
+    #[inline]
+    pub fn with_epoch(&self, epoch: Epoch) -> PointerData {
+        PointerData((self.0 & !EPOCH_MASK) + ((epoch as u64) << EPOCH_OFFSET))
+    }
 }
 
 #[cfg(test)]
@@ -55,5 +60,6 @@ mod tests {
         assert_eq!(pd.get_index(), 1);
         assert_eq!(pd.get_epoch(), 2);
         assert_eq!(pd.get_storage_id(), 3);
+        assert_eq!(pd.with_epoch(5).get_epoch(), 5);
     }
 }
