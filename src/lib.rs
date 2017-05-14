@@ -146,6 +146,15 @@ pub struct WriteIter<'a, T: 'a> {
     index: Index,
 }
 
+/// Streaming iterator providing mutable components
+/// and a capability to look back/ahead.
+pub struct Cursor<'a, T: 'a> {
+    storage: &'a mut StorageInner<T>,
+    skip_lost: bool,
+    index: Index,
+    storage_id: StorageId,
+}
+
 
 impl<'a, T> ops::Index<&'a Pointer<T>> for Storage<T> {
     type Output = T;
@@ -374,6 +383,26 @@ impl<T> Storage<T> {
         Some(pointer)
     }
 
+    /// Produce a streaming mutable iterator.
+    pub fn cursor(&mut self) -> Cursor<T> {
+        Cursor {
+            storage: &mut self.inner,
+            skip_lost: false,
+            index: 0,
+            storage_id: self.id,
+        }
+    }
+
+    /// Produce a streaming iterator that skips over lost elements.
+    pub fn cursor_alive(&mut self) -> Cursor<T> {
+        Cursor {
+            storage: &mut self.inner,
+            skip_lost: true,
+            index: 0,
+            storage_id: self.id,
+        }
+    }
+
     /// Add a new component to the storage, returning the `Pointer` to it.
     pub fn create(&mut self, value: T) -> Pointer<T> {
         let data = match self.inner.free_list.pop() {
@@ -399,6 +428,7 @@ impl<T> Storage<T> {
         }
     }
 }
+
 
 impl<T> Clone for Pointer<T> {
     #[inline]
@@ -463,7 +493,7 @@ impl<'a, T> Iterator for ReadIter<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let id = self.index;
-            if id == self.storage.data.len() {
+            if id >= self.storage.data.len() {
                 return None
             }
             self.index += 1;
@@ -503,7 +533,7 @@ impl<'a, T> Iterator for WriteIter<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let id = self.index;
-            if id == self.storage.data.len() {
+            if id >= self.storage.data.len() {
                 return None
             }
             self.index += 1;
@@ -512,6 +542,70 @@ impl<'a, T> Iterator for WriteIter<'a, T> {
                     base: self.storage.data.as_mut_ptr(),
                     index: id,
                     marker: PhantomData,
+                })
+            }
+        }
+    }
+}
+
+
+/// Item of the streaming iterator.
+pub struct CursorItem<'a, T: 'a> {
+    slice: &'a mut [T],
+    data: PointerData,
+}
+
+impl<'a, T> ops::Deref for CursorItem<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        unsafe{ self.slice.get_unchecked(self.data.get_index()) }
+    }
+}
+
+impl<'a, T> ops::DerefMut for CursorItem<'a, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe{ self.slice.get_unchecked_mut(self.data.get_index()) }
+    }
+}
+
+impl<'a, T> CursorItem<'a, T> {
+    /// Attempt to read an element before the cursor by a pointer.
+    pub fn look_back(&self, pointer: &'a Pointer<T>) -> Option<&T> {
+        debug_assert_eq!(pointer.data.get_storage_id(), self.data.get_storage_id());
+        let id = pointer.data.get_index();
+        if id < self.data.get_index() {
+            Some(unsafe { self.slice.get_unchecked(id) })
+        } else {
+            None
+        }
+    }
+
+    /// Attempt to read an element after the cursor by a pointer.
+    pub fn look_ahead(&self, pointer: &'a Pointer<T>) -> Option<&T> {
+        debug_assert_eq!(pointer.data.get_storage_id(), self.data.get_storage_id());
+        let id = pointer.data.get_index();
+        if id > self.data.get_index() {
+            debug_assert!(id < self.slice.len());
+            Some(unsafe { self.slice.get_unchecked(id) })
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, T> Cursor<'a, T> {
+    /// Advance the stream to the next item.
+    pub fn next(&mut self) -> Option<CursorItem<T>> {
+        loop {
+            let id = self.index;
+            if id >= self.storage.data.len() {
+                return None
+            }
+            self.index += 1;
+            if !self.skip_lost || self.storage.meta[id] != 0 {
+                return Some(CursorItem {
+                    slice: &mut self.storage.data,
+                    data: PointerData::new(id, 0, self.storage_id),
                 })
             }
         }
