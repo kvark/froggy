@@ -6,21 +6,8 @@ extern crate froggy;
 use test::Bencher;
 use froggy::{Pointer, Storage};
 
-// Entities with a Postion and Velocity component
-pub const N_POS_VEL: usize = 1000;
-// Entities with a Position component only
-pub const N_POS: usize = 9000;
-
-struct Position {
-    pub x: f32,
-    pub y: f32,
-}
-
-struct Velocity {
-    pub dx: f32,
-    pub dy: f32,
-    pub writes: Pointer<Position>,
-}
+mod bench_setup;
+use bench_setup::{Position, Velocity, N_POS_VEL, N_POS};
 
 struct Movement {
 	pub vel_comp: Vec<Pointer<Velocity>>,

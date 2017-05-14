@@ -1,22 +1,16 @@
 #![feature(test)]
 
 extern crate test;
-use test::Bencher;
-
 extern crate froggy;
 
+use test::Bencher;
 use froggy::{Pointer, Storage};
 
-// Entities with a Postion and Velocity component
-pub const N_POS_VEL: usize = 1000;
-// Entities with a Position component only
-pub const N_POS: usize = 9000;
+mod bench_setup;
+use bench_setup::{Position, N_POS_VEL, N_POS};
 
-struct Position {
-    pub x: f32,
-    pub y: f32,
-}
-
+// Since component linking is not used in this bench,
+// it has a custom Velocity component
 struct Velocity {
     pub dx: f32,
     pub dy: f32,
