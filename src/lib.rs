@@ -151,7 +151,7 @@ impl<'a, T> ops::Index<&'a Pointer<T>> for Storage<T> {
     type Output = T;
     #[inline]
     fn index(&self, pointer: &'a Pointer<T>) -> &T {
-        debug_assert_eq!(self.id, pointer.data.get_storage_id());
+        debug_assert_eq!(pointer.data.get_storage_id(), self.id);
         debug_assert!(pointer.data.get_index() < self.inner.data.len());
         unsafe { self.inner.data.get_unchecked(pointer.data.get_index()) }
     }
@@ -160,9 +160,9 @@ impl<'a, T> ops::Index<&'a Pointer<T>> for Storage<T> {
 impl<'a, T> ops::IndexMut<&'a Pointer<T>> for Storage<T> {
     #[inline]
     fn index_mut(&mut self, pointer: &'a Pointer<T>) -> &mut T {
-        debug_assert_eq!(self.id, pointer.storage_id);
-        debug_assert!(pointer.index < self.inner.data.len());
-        unsafe { self.inner.data.get_unchecked_mut(pointer.index) }
+        debug_assert_eq!(pointer.data.get_storage_id(), self.id);
+        debug_assert!(pointer.data.get_index() < self.inner.data.len());
+        unsafe { self.inner.data.get_unchecked_mut(pointer.data.get_index()) }
     }
 }
 
@@ -361,17 +361,16 @@ impl<T> Storage<T> {
     /// Move the `Pointer` to the next element, if any.
     pub fn advance(&mut self, mut pointer: Pointer<T>) -> Option<Pointer<T>> {
         debug_assert_eq!(self.id, pointer.data.get_storage_id());
-        if pointer.data.get_index()+1 >= self.inner.meta.len() {
+        let index = pointer.data.get_index() + 1;
+        if index >= self.inner.meta.len() {
             // pointer is dropped here
             return None
         }
-        self.inner.meta[pointer.data.get_index()] -= 1;
-        let index = pointer.data.get_index();
-        pointer.data.set_index(index + 1);
-        self.inner.meta[pointer.data.get_index()] += 1;
+        self.inner.meta[index-1] -= 1;
+        self.inner.meta[index] += 1;
         //Note: this is unfortunate
-        let epoch = self.sync(|pending| pending.epoch[pointer.data.get_index()]);
-        pointer.data.set_epoch(epoch);
+        let epoch = self.sync(|pending| pending.epoch[index]);
+        pointer.data = PointerData::new(index, epoch, self.id);
         Some(pointer)
     }
 
@@ -386,7 +385,8 @@ impl<T> Storage<T> {
                 data
             },
             None => {
-                debug_assert_eq!(self.inner.data.len(), self.inner.meta.len());
+                let i = self.inner.meta.len();
+                debug_assert_eq!(self.inner.data.len(), i);
                 self.inner.data.push(value);
                 self.inner.meta.push(1);
                 PointerData::new(i, 0, self.id)
