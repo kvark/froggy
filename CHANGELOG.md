@@ -1,6 +1,6 @@
 ## Change Log
 
-### v0.3 (TBD)
+### v0.3 (2017-05-15)
   - removed storage locks ([#32](https://github.com/kvark/froggy/pull/32) [#33](https://github.com/kvark/froggy/pull/33))
   - optimized epoch initialization ([#37](https://github.com/kvark/froggy/pull/37))
   - implemented `FromIterator` and `IntoIterator` ([#39](https://github.com/kvark/froggy/pull/39))
