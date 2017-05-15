@@ -20,12 +20,15 @@ However, CGS has a number of advantages:
 */
 #![warn(missing_docs)]
 
+extern crate spin;
+
 mod bitfield;
 
 use std::iter::FromIterator;
 use std::marker::PhantomData;
 use std::ops;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use spin::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::vec::Drain;
 use bitfield::PointerData;
@@ -119,7 +122,7 @@ impl<T> WeakPointer<T> {
     /// Upgrades the `WeakPointer` to a `Pointer`, if possible.
     /// Returns `Err` if the strong count has reached zero or the inner value was destroyed.
     pub fn upgrade(&self) -> Result<Pointer<T>, DeadComponentError> {
-        let mut pending = self.pending.lock().unwrap();
+        let mut pending = self.pending.lock();
         if pending.get_epoch(self.data.get_index()) != self.data.get_epoch() {
             return Err(DeadComponentError);
         }
@@ -245,7 +248,7 @@ impl<T> Storage<T> {
     fn sync<F, U>(&mut self, mut fun: F) -> U where
         F: FnMut(&mut Pending) -> U
     {
-        let mut pending = self.pending.lock().unwrap();
+        let mut pending = self.pending.lock();
         // missing epochs
         while pending.epoch.len() < self.inner.data.len() {
             pending.epoch.push(0);
@@ -318,7 +321,7 @@ impl<T> Storage<T> {
 
     /// Pin an iterated item with a newly created `Pointer`.
     pub fn pin(&self, item: &ReadItem<T>) -> Pointer<T> {
-        let mut pending = self.pending.lock().unwrap();
+        let mut pending = self.pending.lock();
         pending.add_ref.push(item.index);
         Pointer {
             data: PointerData::new(
@@ -383,7 +386,7 @@ impl<T> Storage<T> {
 impl<T> Clone for Pointer<T> {
     #[inline]
     fn clone(&self) -> Pointer<T> {
-        self.pending.lock().unwrap().add_ref.push(self.data.get_index());
+        self.pending.lock().add_ref.push(self.data.get_index());
         Pointer {
             data: self.data,
             pending: self.pending.clone(),
@@ -420,7 +423,7 @@ impl<T> PartialEq for WeakPointer<T> {
 impl<T> Drop for Pointer<T> {
     #[inline]
     fn drop(&mut self) {
-        self.pending.lock().unwrap().sub_ref.push(self.data.get_index());
+        self.pending.lock().sub_ref.push(self.data.get_index());
     }
 }
 
@@ -523,7 +526,7 @@ impl<'a, T> CursorItem<'a, T> {
     /// Pin the item with a strong pointer.
     pub fn pin(&self) -> Pointer<T> {
         let epoch = {
-            let mut pending = self.pending.lock().unwrap();
+            let mut pending = self.pending.lock();
             pending.add_ref.push(self.data.get_index());
             pending.get_epoch(self.data.get_index())
         };

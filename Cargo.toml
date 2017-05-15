@@ -15,3 +15,6 @@ Froggy is a prototype for the Component Graph System programming model. It aims 
 
 [workspace]
 members = ["demos/cubes"]
+
+[dependencies]
+spin = {version="0.4", default-features=false }
