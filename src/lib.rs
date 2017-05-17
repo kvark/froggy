@@ -85,6 +85,16 @@ impl Pending {
 type PendingRef = Arc<Mutex<Pending>>;
 /// Component storage type.
 /// Manages the components and allows for efficient processing.
+/// See also: [Pointer](struct.Pointer.html)
+/// # Examples
+/// ```rust
+/// # use froggy::Storage;
+/// let mut storage = Storage::new();
+/// // add component to storage
+/// let pointer = storage.create(1u32);
+/// // change component by pointer
+/// storage[&pointer] = 30;
+/// ```
 #[derive(Debug)]
 pub struct Storage<T> {
     inner: StorageInner<T>,
@@ -94,8 +104,25 @@ pub struct Storage<T> {
 
 /// A pointer to a component of type `T`.
 /// The component is guaranteed to be accessible for as long as this pointer is alive.
-/// You'd need a locked storage to access the data.
-/// The pointer also holds the storage alive and knows the index of the element to look up.
+/// You'd need a storage to access the data.
+/// # Examples
+/// ```rust
+/// # let mut storage = froggy::Storage::new();
+/// // you can create pointer by creating component in storage
+/// let ptr1 = storage.create(1i32);
+/// // later you can change component in storage
+/// storage[&ptr1] = 2i32;
+/// ```
+/// Also you can use [`Storage::pin`](struct.Storage.html#method.pin) to pin component with `Pointer`
+///
+/// ```rust
+/// # let mut storage = froggy::Storage::new();
+/// # let ptr1 = storage.create(1i32);
+/// let item = storage.iter().next().unwrap();
+/// let ptr2 = storage.pin(&item);
+/// // Pointers to the same component are equal
+/// assert_eq!(ptr1, ptr2);
+/// ```
 #[derive(Debug)]
 pub struct Pointer<T> {
     data: PointerData,
@@ -105,6 +132,7 @@ pub struct Pointer<T> {
 
 impl<T> Pointer<T> {
     /// Creates a new `WeakPointer` to this component.
+    /// See [`WeakPointer`](weak/struct.WeakPointer.html)
     #[inline]
     pub fn downgrade(&self) -> WeakPointer<T> {
         weak::from_pointer(self)
@@ -129,6 +157,8 @@ pub struct WriteIter<'a, T: 'a> {
 
 /// Streaming iterator providing mutable components
 /// and a capability to look back/ahead.
+///
+/// See documentation of [`CursorItem`](struct.CursorItem.html).
 #[derive(Debug)]
 pub struct Cursor<'a, T: 'a> {
     storage: &'a mut StorageInner<T>,
@@ -223,9 +253,13 @@ impl<T> Storage<T> {
             Vec::with_capacity(capacity))
     }
 
-    /// Process the pending refcount changes.
-    fn sync<F, U>(&mut self, mut fun: F) -> U where
-        F: FnMut(&mut Pending) -> U
+    /// Synchronize for all the pending updates.
+    /// It will update all reference counters in Storage, so
+    /// [`iter_alive`](struct.Storage.html#method.iter_alive) and
+    /// [`iter_alive_mut`](struct.Storage.html#method.iter_alive_mut) will return actual information.
+    ///
+    /// Use this function only if necessary, because it needs to block Storage.
+    pub fn sync_pending(&mut self)
     {
         let mut pending = self.pending.lock();
         // missing epochs
@@ -248,13 +282,6 @@ impl<T> Storage<T> {
                 }
             }
         }
-        // other stuff
-        fun(&mut *pending)
-    }
-
-    /// Synchronize for all the pending updates.
-    pub fn sync_pending(&mut self) {
-        self.sync(|_| ());
     }
 
     /// Iterate all components in this storage.
@@ -268,6 +295,10 @@ impl<T> Storage<T> {
     }
 
     /// Iterate all components that are still referenced by something.
+    /// ### Attention
+    /// Information about live components is updated not for all changes, but
+    /// only when you explicitly call [`sync_pending`](struct.Storage.html#method.sync_pending).
+    /// It means, you can get wrong results when calling this function before updating pending.
     #[inline]
     pub fn iter_alive(&self) -> ReadIter<T> {
         ReadIter {
@@ -288,6 +319,10 @@ impl<T> Storage<T> {
     }
 
     /// Iterate all components that are still referenced by something, mutably.
+    /// ### Attention
+    /// Information about live components is updated not for all changes, but
+    /// only when you explicitly call [`sync_pending`](struct.Storage.html#method.sync_pending).
+    /// It means, you can get wrong results when calling this function before updating pending.
     #[inline]
     pub fn iter_alive_mut(&mut self) -> WriteIter<T> {
         self.sync_pending();
@@ -325,6 +360,10 @@ impl<T> Storage<T> {
     }
 
     /// Produce a streaming iterator that skips over lost elements.
+    /// ### Attention
+    /// Information about live components is updated not for all changes, but
+    /// only when you explicitly call [`sync_pending`](struct.Storage.html#method.sync_pending).
+    /// It means, you can get wrong results when calling this function before updating pending.
     pub fn cursor_alive(&mut self) -> Cursor<T> {
         Cursor {
             storage: &mut self.inner,
@@ -395,7 +434,6 @@ impl<T> Drop for Pointer<T> {
         self.pending.lock().sub_ref.push(self.data.get_index());
     }
 }
-
 
 /// The item of `ReadIter`.
 #[derive(Debug, Clone, Copy)]
@@ -474,6 +512,57 @@ impl<'a, T> Iterator for WriteIter<'a, T> {
 
 
 /// Item of the streaming iterator.
+///
+/// [`Cursor`](struct.Cursor.html) and `CursorItem` are extremely useful
+/// when you need to iterate over [`Pointers`](struct.Pointer.html) in storage
+/// with ability to get other component in the same storage during iterating.
+///
+/// # Examples
+/// Unfortunately, you can't use common `for` loop,
+/// but you can use `while let` statement:
+///
+/// ```rust
+/// # let mut storage: froggy::Storage<i32> = froggy::Storage::new();
+/// let mut cursor = storage.cursor();
+/// while let Some(item) = cursor.next() {
+///    // ... your code
+/// }
+///
+/// ```
+/// While iterating, you can [`pin`](struct.CursorItem.html#method.pin) item
+/// with Pointer. Also you can [`look_ahead`](struct.CursorItem.html#method.look_ahead)
+/// and [`look_back`](struct.CursorItem.html#method.look_back) for other items
+/// in this storage.
+///
+/// ```rust
+/// # use froggy::WeakPointer;
+/// #[derive(Debug, PartialEq)]
+/// struct Node {
+///    pointer: Option<WeakPointer<Node>>,
+/// }
+/// //...
+/// # fn do_something(_: &Node) {} 
+/// # fn try_main() -> Result<(), froggy::Error> {
+/// # let mut storage = froggy::Storage::new();
+/// # let ptr1 = storage.create(Node { pointer: None });
+/// # let ptr2 = storage.create(Node { pointer: None });
+/// # storage[&ptr1].pointer = Some(ptr2.downgrade());
+/// # storage[&ptr2].pointer = Some(ptr1.downgrade());
+/// let mut cursor = storage.cursor();
+/// while let Some(mut item) = cursor.next() {
+///    // let's look for the other Node
+///    match item.pointer {
+///        Some(ref pointer) => {
+///            let ref pointer = pointer.upgrade()?;
+///            let other_node = item.look_back(pointer)?;
+///            do_something(&other_node)
+///        },
+///        None => {},
+///    }
+/// }
+/// # Ok(())
+/// # }
+/// # fn main() { try_main(); }
 #[derive(Debug)]
 pub struct CursorItem<'a, T: 'a> {
     slice: &'a mut [T],

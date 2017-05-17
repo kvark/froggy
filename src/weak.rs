@@ -2,6 +2,42 @@ use ::{Pointer, PointerData, PendingRef, DeadComponentError};
 use ::std::marker::PhantomData;
 
 /// Weak variant of `Pointer`.
+/// `WeakPointer`s are used to avoid deadlocking when dropping structures with cycled references to each other.
+/// In the following example `Storage` will stand in memory even after going out of scope, because there is cyclic referencing between `Node`s
+///
+/// ```rust
+/// # use froggy::{Pointer, Storage};
+/// struct Node {
+///     next: Option<Pointer<Node>>,
+/// }
+/// # let mut storage = Storage::new();
+/// let ptr1 = storage.create(Node { next: None });
+/// let ptr2 = storage.create(Node { next: Some(ptr1.clone()) });
+/// storage[&ptr1].next = Some(ptr2.clone());
+/// ```
+///
+/// To avoid such situations, just replace `Option<Pointer<Node>>` with `Option<WeakPointer<Node>>`
+/// # Example
+///
+/// ```rust
+/// # let mut storage = froggy::Storage::new();
+/// let pointer = storage.create(1i32);
+/// // create WeakPointer to this component
+/// let weak = pointer.downgrade();
+/// ```
+///
+/// You will need to [`upgrade`](weak/struct.WeakPointer.html#method.upgrade) `WeakPointer` to access component in storage
+///
+/// ```rust
+/// # fn try_main() -> Result<(), froggy::DeadComponentError> {
+/// # let mut storage = froggy::Storage::new();
+/// # let _pointer = storage.create(1i32);
+/// # let weak = _pointer.downgrade();
+/// let pointer = weak.upgrade()?;
+/// storage[&pointer] = 20;
+/// # Ok(()) }
+/// # fn main() { try_main().unwrap(); }
+/// ```
 #[derive(Debug)]
 pub struct WeakPointer<T> {
     data: PointerData,
@@ -11,7 +47,8 @@ pub struct WeakPointer<T> {
 
 impl<T> WeakPointer<T> {
     /// Upgrades the `WeakPointer` to a `Pointer`, if possible.
-    /// Returns `Err` if the strong count has reached zero or the inner value was destroyed.
+    /// # Errors
+    /// Returns [`DeadComponentError`](struct.DeadComponentError.html) if the related component in storage was destroyed.
     pub fn upgrade(&self) -> Result<Pointer<T>, DeadComponentError> {
         let mut pending = self.pending.lock();
         if pending.get_epoch(self.data.get_index()) != self.data.get_epoch() {
