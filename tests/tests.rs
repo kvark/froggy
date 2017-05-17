@@ -1,6 +1,6 @@
 extern crate froggy;
 
-use froggy::{Pointer, Storage};
+use froggy::{Pointer, Storage, WeakPointer};
 
 #[test]
 fn sizes() {
@@ -73,4 +73,74 @@ fn cursor() {
         assert_eq!(data.pop().as_ref(), Some(&*item));
         let _ptr = item.pin();
     }
+}
+
+#[test]
+fn storage_default() {
+    let mut storage = Storage::default();
+    storage.create(1u32);
+}
+
+#[test]
+fn pointer_eq() {
+    let mut storage = Storage::new();
+    storage.create(1u32);
+    storage.create(2u32);
+    let ptr1 = storage.pin(&storage.iter().next().unwrap());
+    let ptr2 = storage.pin(&storage.iter().nth(1).unwrap());
+    let ptr3 = storage.pin(&storage.iter().nth(1).unwrap());
+    // PartialEq
+    assert!(ptr2 == ptr3);
+    assert!(ptr1 != ptr2);
+    assert!(ptr1 != ptr3);
+    // Reflexive
+    assert!(ptr1 == ptr1);
+    assert!(ptr2 == ptr2.clone());
+    // Symmetric
+    assert!(ptr3 == ptr2);
+    // Transitive
+    assert!(ptr3 == ptr4);
+    assert!(ptr2 == ptr4);
+}
+
+#[test]
+fn weak_pointer_eq() {
+    let mut storage = Storage::new();
+    storage.create(1u32);
+    storage.create(2u32);
+    let weak_ptr1 = storage.pin(&storage.iter().next().unwrap()).downgrade();
+    let ptr2 = storage.pin(&storage.iter().nth(1).unwrap());
+    let weak_ptr2 = ptr2.downgrade();
+    let weak_ptr3 = ptr2.downgrade();
+    // PartialEq
+    assert!(weak_ptr2 == weak_ptr3);
+    assert!(weak_ptr1 != weak_ptr2);
+    assert!(weak_ptr1 != weak_ptr3);
+    assert!(weak_ptr3.upgrade().unwrap() == weak_ptr2.upgrade().unwrap());
+    // Reflexive
+    assert!(weak_ptr1 == weak_ptr1);
+    assert!(weak_ptr2 == weak_ptr2.clone());
+    // Symmetric
+    assert!(weak_ptr3 == weak_ptr2);
+    // Transitive
+    assert!(weak_ptr3 == weak_ptr4);
+    assert!(weak_ptr2 == weak_ptr4);
+}
+
+#[test]
+fn test_send() {
+    fn assert_send<T: Send>() {}
+    assert_send::<Storage<i32>>();
+    assert_send::<Pointer<i32>>();
+    assert_send::<WeakPointer<i32>>();
+    assert_send::<froggy::DeadComponentError>();
+}
+
+#[test]
+fn test_sync() {
+    fn assert_sync<T: Sync>() {}
+    assert_sync::<Storage<i32>>();
+    assert_sync::<Pointer<i32>>();
+    assert_sync::<WeakPointer<i32>>();
+    assert_sync::<froggy::DeadComponentError>();
 }

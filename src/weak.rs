@@ -2,6 +2,7 @@ use ::{Pointer, PointerData, PendingRef, DeadComponentError};
 use ::std::marker::PhantomData;
 
 /// Weak variant of `Pointer`.
+#[derive(Debug)]
 pub struct WeakPointer<T> {
     data: PointerData,
     pending: PendingRef,
@@ -52,3 +53,5 @@ impl<T> PartialEq for WeakPointer<T> {
         self.data == other.data
     }
 }
+
+impl<T> Eq for WeakPointer<T> {}

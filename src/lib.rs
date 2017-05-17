@@ -84,6 +84,7 @@ impl Pending {
 type PendingRef = Arc<Mutex<Pending>>;
 /// Component storage type.
 /// Manages the components and allows for efficient processing.
+#[derive(Debug)]
 pub struct Storage<T> {
     inner: StorageInner<T>,
     pending: PendingRef,
@@ -110,6 +111,7 @@ impl<T> Pointer<T> {
 }
 
 /// Iterator for reading components.
+#[derive(Debug)]
 pub struct ReadIter<'a, T: 'a> {
     storage: &'a StorageInner<T>,
     skip_lost: bool,
@@ -117,6 +119,7 @@ pub struct ReadIter<'a, T: 'a> {
 }
 
 /// Iterator for writing components.
+#[derive(Debug)]
 pub struct WriteIter<'a, T: 'a> {
     storage: &'a mut StorageInner<T>,
     skip_lost: bool,
@@ -125,6 +128,7 @@ pub struct WriteIter<'a, T: 'a> {
 
 /// Streaming iterator providing mutable components
 /// and a capability to look back/ahead.
+#[derive(Debug)]
 pub struct Cursor<'a, T: 'a> {
     storage: &'a mut StorageInner<T>,
     pending: &'a PendingRef,
@@ -356,6 +360,12 @@ impl<T> Storage<T> {
     }
 }
 
+impl<T> Default for Storage<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 
 impl<T> Clone for Pointer<T> {
     #[inline]
@@ -376,6 +386,8 @@ impl<T> PartialEq for Pointer<T> {
     }
 }
 
+impl<T> Eq for Pointer<T> {}
+
 impl<T> Drop for Pointer<T> {
     #[inline]
     fn drop(&mut self) {
@@ -385,6 +397,7 @@ impl<T> Drop for Pointer<T> {
 
 
 /// The item of `ReadIter`.
+#[derive(Debug, Clone, Copy)]
 pub struct ReadItem<'a, T: 'a> {
     value: &'a T,
     index: Index,
@@ -418,6 +431,7 @@ impl<'a, T> Iterator for ReadIter<'a, T> {
 
 
 /// The item of `WriteIter`.
+#[derive(Debug)]
 pub struct WriteItem<'a, T: 'a> {
     base: *mut T,
     index: Index,
@@ -459,6 +473,7 @@ impl<'a, T> Iterator for WriteIter<'a, T> {
 
 
 /// Item of the streaming iterator.
+#[derive(Debug)]
 pub struct CursorItem<'a, T: 'a> {
     slice: &'a mut [T],
     pending: &'a PendingRef,
