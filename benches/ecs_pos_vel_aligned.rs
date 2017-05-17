@@ -55,7 +55,7 @@ fn build() -> World {
 
 #[bench]
 fn bench_build(b: &mut Bencher) {
-    b.iter(|| build());
+    b.iter(build);
 }
 
 #[bench]
@@ -63,7 +63,7 @@ fn bench_update(b: &mut Bencher) {
     let mut world = build();
 
     b.iter(|| {
-        for e in world.entities.iter() {
+        for e in &world.entities {
             if let Some(ref vel) = e.vel {
                 let mut p = &mut world.pos[&e.pos];
                 let v = &world.vel[vel];

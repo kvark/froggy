@@ -45,7 +45,7 @@ fn build() -> World {
 
 #[bench]
 fn bench_build(b: &mut Bencher) {
-    b.iter(|| build());
+    b.iter(build);
 }
 
 #[bench]

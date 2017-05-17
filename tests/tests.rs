@@ -29,7 +29,7 @@ fn iterating() {
     assert_eq!(storage.iter().count(), 5);
     assert_eq!(*storage.iter().nth(0).unwrap(), 5);
     assert_eq!(*storage.iter().nth(1).unwrap(), 7);
-    assert!(storage.iter().find(|v| **v == 4).is_some());
+    assert!(storage.iter().any(|v| *v == 4));
 }
 
 #[test]
@@ -90,17 +90,12 @@ fn pointer_eq() {
     let ptr2 = storage.pin(&storage.iter().nth(1).unwrap());
     let ptr3 = storage.pin(&storage.iter().nth(1).unwrap());
     // PartialEq
-    assert!(ptr2 == ptr3);
-    assert!(ptr1 != ptr2);
-    assert!(ptr1 != ptr3);
+    assert_eq!(ptr2, ptr3);
+    assert_ne!(ptr1, ptr2);
+    assert_ne!(ptr1, ptr3);
     // Reflexive
-    assert!(ptr1 == ptr1);
-    assert!(ptr2 == ptr2.clone());
-    // Symmetric
-    assert!(ptr3 == ptr2);
-    // Transitive
-    assert!(ptr3 == ptr4);
-    assert!(ptr2 == ptr4);
+    assert_eq!(ptr1, ptr1);
+    assert_eq!(ptr2, ptr2.clone());
 }
 
 #[test]
@@ -113,18 +108,13 @@ fn weak_pointer_eq() {
     let weak_ptr2 = ptr2.downgrade();
     let weak_ptr3 = ptr2.downgrade();
     // PartialEq
-    assert!(weak_ptr2 == weak_ptr3);
-    assert!(weak_ptr1 != weak_ptr2);
-    assert!(weak_ptr1 != weak_ptr3);
-    assert!(weak_ptr3.upgrade().unwrap() == weak_ptr2.upgrade().unwrap());
+    assert_eq!(weak_ptr2, weak_ptr3);
+    assert_ne!(weak_ptr1, weak_ptr2);
+    assert_ne!(weak_ptr1, weak_ptr3);
     // Reflexive
-    assert!(weak_ptr1 == weak_ptr1);
-    assert!(weak_ptr2 == weak_ptr2.clone());
-    // Symmetric
-    assert!(weak_ptr3 == weak_ptr2);
-    // Transitive
-    assert!(weak_ptr3 == weak_ptr4);
-    assert!(weak_ptr2 == weak_ptr4);
+    assert_eq!(weak_ptr1, weak_ptr1);
+    assert_eq!(weak_ptr2, weak_ptr2.clone());
+    assert_eq!(weak_ptr3.upgrade().unwrap(), weak_ptr2.upgrade().unwrap());
 }
 
 #[test]
