@@ -55,9 +55,11 @@ fn weak_epoch() {
         assert_eq!(storage.iter_alive().count(), 1);
         node1.downgrade()
     };
+    storage.sync_pending();
     assert_eq!(storage.iter_alive_mut().count(), 0);
     assert_eq!(weak.upgrade(), Err(froggy::DeadComponentError));
     let _ptr = storage.create(1 as i32);
+    storage.sync_pending();
     assert_eq!(storage.iter_alive_mut().count(), 1);
     assert_eq!(weak.upgrade(), Err(froggy::DeadComponentError));
 }
@@ -124,6 +126,7 @@ fn test_send() {
     assert_send::<Pointer<i32>>();
     assert_send::<WeakPointer<i32>>();
     assert_send::<froggy::DeadComponentError>();
+    assert_send::<froggy::NotFoundError>();
 }
 
 #[test]
@@ -133,4 +136,5 @@ fn test_sync() {
     assert_sync::<Pointer<i32>>();
     assert_sync::<WeakPointer<i32>>();
     assert_sync::<froggy::DeadComponentError>();
+    assert_sync::<froggy::NotFoundError>();
 }

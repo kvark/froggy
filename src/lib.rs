@@ -49,9 +49,17 @@ type Epoch = u16;
 type StorageId = u8;
 static STORAGE_UID: AtomicUsize = ATOMIC_USIZE_INIT;
 
-/// The error type which is returned from upgrading WeakPointer.
+/// The error type which is returned from upgrading 
+/// [`WeakPointer`](struct.WeakPointer.html).
 #[derive(Debug, PartialEq)]
 pub struct DeadComponentError;
+
+/// The error type which is returned from using 
+/// [`look_back`](struct.CursorItem.html#method.look_back) 
+/// and [`look_ahead`](struct.CursorItem.html#method.look_ahead) of 
+/// [`CursorItem`](struct.CursorItem.html).
+#[derive(Debug, PartialEq)]
+pub struct NotFoundError;
 
 /// Inner storage data that is locked by `RwLock`.
 #[derive(Debug)]
@@ -325,7 +333,6 @@ impl<T> Storage<T> {
     /// It means, you can get wrong results when calling this function before updating pending.
     #[inline]
     pub fn iter_alive_mut(&mut self) -> WriteIter<T> {
-        self.sync_pending();
         WriteIter {
             storage: &mut self.inner,
             skip_lost: true,
@@ -542,7 +549,7 @@ impl<'a, T> Iterator for WriteIter<'a, T> {
 /// }
 /// //...
 /// # fn do_something(_: &Node) {} 
-/// # fn try_main() -> Result<(), froggy::Error> {
+/// # fn try_main() -> Result<(), froggy::DeadComponentError> {
 /// # let mut storage = froggy::Storage::new();
 /// # let ptr1 = storage.create(Node { pointer: None });
 /// # let ptr2 = storage.create(Node { pointer: None });
@@ -554,8 +561,9 @@ impl<'a, T> Iterator for WriteIter<'a, T> {
 ///    match item.pointer {
 ///        Some(ref pointer) => {
 ///            let ref pointer = pointer.upgrade()?;
-///            let other_node = item.look_back(pointer)?;
-///            do_something(&other_node)
+///            if let Ok(ref other_node) = item.look_back(pointer) {
+///                do_something(other_node);
+///            }
 ///        },
 ///        None => {},
 ///    }
@@ -599,25 +607,33 @@ impl<'a, T> CursorItem<'a, T> {
     }
 
     /// Attempt to read an element before the cursor by a pointer.
-    pub fn look_back(&self, pointer: &'a Pointer<T>) -> Option<&T> {
+    ///
+    /// # Errors
+    /// Returns [`NotFoundError`](struct.NotFoundError.html) if there is no component
+    /// before current `CursorItem` in the `Storage`.
+    pub fn look_back(&self, pointer: &'a Pointer<T>) -> Result<&T, NotFoundError> {
         debug_assert_eq!(pointer.data.get_storage_id(), self.data.get_storage_id());
         let id = pointer.data.get_index();
         if id < self.data.get_index() {
-            Some(unsafe { self.slice.get_unchecked(id) })
+            Ok(unsafe { self.slice.get_unchecked(id) })
         } else {
-            None
+            Err(NotFoundError)
         }
     }
 
     /// Attempt to read an element after the cursor by a pointer.
-    pub fn look_ahead(&self, pointer: &'a Pointer<T>) -> Option<&T> {
+    ///
+    /// # Errors
+    /// Returns [`NotFoundError`](struct.NotFoundError.html) if there is no component
+    /// after current `CursorItem` in the `Storage`.
+    pub fn look_ahead(&self, pointer: &'a Pointer<T>) -> Result<&T, NotFoundError> {
         debug_assert_eq!(pointer.data.get_storage_id(), self.data.get_storage_id());
         let id = pointer.data.get_index();
         if id > self.data.get_index() {
             debug_assert!(id < self.slice.len());
-            Some(unsafe { self.slice.get_unchecked(id) })
+            Ok(unsafe { self.slice.get_unchecked(id) })
         } else {
-            None
+            Err(NotFoundError)
         }
     }
 }
