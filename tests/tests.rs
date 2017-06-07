@@ -26,17 +26,17 @@ fn change_by_pointer() {
 fn iterating() {
     let storage: Storage<_> =
         [5 as i32, 7, 4, 6, 7].iter().cloned().collect();
-    assert_eq!(storage.iter().count(), 5);
-    assert_eq!(*storage.iter().nth(0).unwrap(), 5);
-    assert_eq!(*storage.iter().nth(1).unwrap(), 7);
-    assert!(storage.iter().any(|v| *v == 4));
+    assert_eq!(storage.iter_all().count(), 5);
+    assert_eq!(*storage.iter_all().nth(0).unwrap(), 5);
+    assert_eq!(*storage.iter_all().nth(1).unwrap(), 7);
+    assert!(storage.iter_all().any(|v| *v == 4));
 }
 
 #[test]
-fn iter_alive() {
+fn iter_zombies() {
     let storage: Storage<_> = (0 .. 5).map(|i| i*3 as i32).collect();
-    assert_eq!(storage.iter().count(), 5);
-    assert_eq!(storage.iter_alive().count(), 0);
+    assert_eq!(storage.iter().count(), 0);
+    assert_eq!(storage.iter_all().count(), 5);
 }
 
 #[test]
@@ -52,15 +52,15 @@ fn weak_epoch() {
     let mut storage = Storage::new();
     let weak = {
         let node1 = storage.create(1 as i32);
-        assert_eq!(storage.iter_alive().count(), 1);
+        assert_eq!(storage.iter().count(), 1);
         node1.downgrade()
     };
     storage.sync_pending();
-    assert_eq!(storage.iter_alive_mut().count(), 0);
+    assert_eq!(storage.iter_mut().count(), 0);
     assert_eq!(weak.upgrade(), Err(froggy::DeadComponentError));
     let _ptr = storage.create(1 as i32);
     storage.sync_pending();
-    assert_eq!(storage.iter_alive_mut().count(), 1);
+    assert_eq!(storage.iter_mut().count(), 1);
     assert_eq!(weak.upgrade(), Err(froggy::DeadComponentError));
 }
 
