@@ -8,7 +8,7 @@ The components are stored linearly, allowing for the efficient bulk data process
 
 You can find more information about Component Graph System concept on the [wiki](https://github.com/kvark/froggy/wiki/Component-Graph-System).
 Comparing to Entity-Component Systems (ECS), CGS doesn't have the backwards relation of components to entities.
-Thus, it can't process all "entities" by just selecting a subsect of compoments to work on, besides not having the whole "entity" concept.
+Thus, it can't process all "entities" by just selecting a subset of components to work on, besides not having the whole "entity" concept.
 However, CGS has a number of advantages:
 
   - you can share components naturally
@@ -49,14 +49,14 @@ type Epoch = u16;
 type StorageId = u8;
 static STORAGE_UID: AtomicUsize = ATOMIC_USIZE_INIT;
 
-/// The error type which is returned from upgrading 
+/// The error type which is returned from upgrading
 /// [`WeakPointer`](struct.WeakPointer.html).
 #[derive(Debug, PartialEq)]
 pub struct DeadComponentError;
 
-/// The error type which is returned from using 
-/// [`look_back`](struct.CursorItem.html#method.look_back) 
-/// and [`look_ahead`](struct.CursorItem.html#method.look_ahead) of 
+/// The error type which is returned from using
+/// [`look_back`](struct.CursorItem.html#method.look_back)
+/// and [`look_ahead`](struct.CursorItem.html#method.look_ahead) of
 /// [`CursorItem`](struct.CursorItem.html).
 #[derive(Debug, PartialEq)]
 pub struct NotFoundError;
@@ -210,7 +210,7 @@ impl<'a, T> IntoIterator for &'a Storage<T> {
     fn into_iter(self) -> Self::IntoIter {
         ReadIter {
             storage: &self.inner,
-            skip_lost: false,
+            skip_lost: true,
             index: 0,
         }
     }
@@ -222,7 +222,7 @@ impl<'a, T> IntoIterator for &'a mut Storage<T> {
     fn into_iter(self) -> Self::IntoIter {
         WriteIter {
             storage: &mut self.inner,
-            skip_lost: false,
+            skip_lost: true,
             index: 0,
         }
     }
@@ -292,50 +292,52 @@ impl<T> Storage<T> {
         }
     }
 
-    /// Iterate all components in this storage.
+    /// Iterate all components in this storage that are still referenced from outside.
+    /// ### Attention
+    /// Information about live components is updated not for all changes, but
+    /// only when you explicitly call [`sync_pending`](struct.Storage.html#method.sync_pending).
+    /// It means, you can get wrong results when calling this function before updating pending.
     #[inline]
     pub fn iter(&self) -> ReadIter<T> {
         ReadIter {
             storage: &self.inner,
-            skip_lost: false,
-            index: 0,
-        }
-    }
-
-    /// Iterate all components that are still referenced by something.
-    /// ### Attention
-    /// Information about live components is updated not for all changes, but
-    /// only when you explicitly call [`sync_pending`](struct.Storage.html#method.sync_pending).
-    /// It means, you can get wrong results when calling this function before updating pending.
-    #[inline]
-    pub fn iter_alive(&self) -> ReadIter<T> {
-        ReadIter {
-            storage: &self.inner,
             skip_lost: true,
             index: 0,
         }
     }
 
-    /// Iterate all components in this storage, mutably.
+    /// Iterate all components that are stored, even if not referenced.
+    /// This can be faster than the regular `iter` for the lack of refcount checks.
+    #[inline]
+    pub fn iter_all(&self) -> ReadIter<T> {
+        ReadIter {
+            storage: &self.inner,
+            skip_lost: false,
+            index: 0,
+        }
+    }
+
+    /// Iterate all components in this storage that are still referenced from outside, mutably.
+    /// ### Attention
+    /// Information about live components is updated not for all changes, but
+    /// only when you explicitly call [`sync_pending`](struct.Storage.html#method.sync_pending).
+    /// It means, you can get wrong results when calling this function before updating pending.
     #[inline]
     pub fn iter_mut(&mut self) -> WriteIter<T> {
         WriteIter {
             storage: &mut self.inner,
-            skip_lost: false,
+            skip_lost: true,
             index: 0,
         }
     }
 
-    /// Iterate all components that are still referenced by something, mutably.
-    /// ### Attention
-    /// Information about live components is updated not for all changes, but
-    /// only when you explicitly call [`sync_pending`](struct.Storage.html#method.sync_pending).
-    /// It means, you can get wrong results when calling this function before updating pending.
+    /// Iterate all components that are stored, even if not referenced, mutably.
+    /// This can be faster than the regular `iter_mut` for the lack of refcount checks.
     #[inline]
-    pub fn iter_alive_mut(&mut self) -> WriteIter<T> {
+    pub fn iter_all_mut(&mut self) -> WriteIter<T> {
         WriteIter {
             storage: &mut self.inner,
-            skip_lost: true,
+            skip_lost: false,
             index: 0,
         }
     }
@@ -355,27 +357,30 @@ impl<T> Storage<T> {
         }
     }
 
-    /// Produce a streaming mutable iterator.
+    /// Produce a streaming mutable iterator over components that are still referenced.
+    /// ### Attention
+    /// Information about live components is updated not for all changes, but
+    /// only when you explicitly call [`sync_pending`](struct.Storage.html#method.sync_pending).
+    /// It means, you can get wrong results when calling this function before updating pending.
+    #[inline]
     pub fn cursor(&mut self) -> Cursor<T> {
         Cursor {
             storage: &mut self.inner,
             pending: &self.pending,
-            skip_lost: false,
+            skip_lost: true,
             index: 0,
             storage_id: self.id,
         }
     }
 
-    /// Produce a streaming iterator that skips over lost elements.
-    /// ### Attention
-    /// Information about live components is updated not for all changes, but
-    /// only when you explicitly call [`sync_pending`](struct.Storage.html#method.sync_pending).
-    /// It means, you can get wrong results when calling this function before updating pending.
-    pub fn cursor_alive(&mut self) -> Cursor<T> {
+    /// Produce a streaming iterator over all stored components.
+    /// This can be faster than the regular `cursor` for the lack of refcount checks.
+    #[inline]
+    pub fn cursor_all(&mut self) -> Cursor<T> {
         Cursor {
             storage: &mut self.inner,
             pending: &self.pending,
-            skip_lost: true,
+            skip_lost: false,
             index: 0,
             storage_id: self.id,
         }
@@ -465,9 +470,9 @@ impl<'a, T> Iterator for ReadIter<'a, T> {
                 return None
             }
             self.index += 1;
-            if !self.skip_lost || self.storage.meta[id] != 0 {
+            if !self.skip_lost || unsafe {*self.storage.meta.get_unchecked(id)} != 0 {
                 return Some(ReadItem {
-                    value: &self.storage.data[id],
+                    value: unsafe { self.storage.data.get_unchecked(id) },
                     index: id,
                 })
             }
@@ -506,7 +511,7 @@ impl<'a, T> Iterator for WriteIter<'a, T> {
                 return None
             }
             self.index += 1;
-            if !self.skip_lost || self.storage.meta[id] != 0 {
+            if !self.skip_lost || unsafe {*self.storage.meta.get_unchecked(id)} != 0 {
                 return Some(WriteItem {
                     base: self.storage.data.as_mut_ptr(),
                     index: id,
@@ -548,7 +553,7 @@ impl<'a, T> Iterator for WriteIter<'a, T> {
 ///    pointer: Option<WeakPointer<Node>>,
 /// }
 /// //...
-/// # fn do_something(_: &Node) {} 
+/// # fn do_something(_: &Node) {}
 /// # fn try_main() -> Result<(), froggy::DeadComponentError> {
 /// # let mut storage = froggy::Storage::new();
 /// # let ptr1 = storage.create(Node { pointer: None });
@@ -647,7 +652,7 @@ impl<'a, T> Cursor<'a, T> {
                 return None
             }
             self.index += 1;
-            if !self.skip_lost || self.storage.meta[id] != 0 {
+            if !self.skip_lost || unsafe {*self.storage.meta.get_unchecked(id)} != 0 {
                 return Some(CursorItem {
                     slice: &mut self.storage.data,
                     data: PointerData::new(id, 0, self.storage_id),
