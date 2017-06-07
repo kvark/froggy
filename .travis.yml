@@ -2,7 +2,13 @@ language: rust
 rust:
   - nightly
   - stable
-#cache: cargo
+cache: cargo
+
+branches:
+  only:
+    - staging
+    - trying
+    - master
 
 notifications:
   webhooks:
