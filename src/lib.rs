@@ -24,6 +24,7 @@ However, CGS has a number of advantages:
 extern crate spin;
 
 mod bitfield;
+mod cursor;
 mod weak;
 
 use std::iter::FromIterator;
@@ -34,6 +35,8 @@ use spin::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::vec::Drain;
 use bitfield::PointerData;
+
+pub use cursor::CursorItem;
 pub use weak::WeakPointer;
 
 type Index = usize;
@@ -149,15 +152,25 @@ impl<T> Pointer<T> {
 
 /// Iterator for reading components.
 #[derive(Debug)]
-pub struct ReadIter<'a, T: 'a> {
+pub struct Iter<'a, T: 'a> {
     storage: &'a StorageInner<T>,
     skip_lost: bool,
     index: Index,
 }
 
+impl<'a, T> Clone for Iter<'a, T> {
+    fn clone(&self) -> Self {
+        Iter {
+            storage: self.storage,
+            skip_lost: self.skip_lost,
+            index: self.index,
+        }
+    }
+}
+
 /// Iterator for writing components.
 #[derive(Debug)]
-pub struct WriteIter<'a, T: 'a> {
+pub struct IterMut<'a, T: 'a> {
     storage: &'a mut StorageInner<T>,
     skip_lost: bool,
     index: Index,
@@ -205,10 +218,10 @@ impl<T> FromIterator<T> for Storage<T> {
 }
 
 impl<'a, T> IntoIterator for &'a Storage<T> {
-    type Item = ReadItem<'a, T>;
-    type IntoIter = ReadIter<'a, T>;
+    type Item = Item<'a, T>;
+    type IntoIter = Iter<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
-        ReadIter {
+        Iter {
             storage: &self.inner,
             skip_lost: true,
             index: 0,
@@ -217,10 +230,10 @@ impl<'a, T> IntoIterator for &'a Storage<T> {
 }
 
 impl<'a, T> IntoIterator for &'a mut Storage<T> {
-    type Item = WriteItem<'a, T>;
-    type IntoIter = WriteIter<'a, T>;
+    type Item = ItemMut<'a, T>;
+    type IntoIter = IterMut<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
-        WriteIter {
+        IterMut {
             storage: &mut self.inner,
             skip_lost: true,
             index: 0,
@@ -298,8 +311,8 @@ impl<T> Storage<T> {
     /// only when you explicitly call [`sync_pending`](struct.Storage.html#method.sync_pending).
     /// It means, you can get wrong results when calling this function before updating pending.
     #[inline]
-    pub fn iter(&self) -> ReadIter<T> {
-        ReadIter {
+    pub fn iter(&self) -> Iter<T> {
+        Iter {
             storage: &self.inner,
             skip_lost: true,
             index: 0,
@@ -309,8 +322,8 @@ impl<T> Storage<T> {
     /// Iterate all components that are stored, even if not referenced.
     /// This can be faster than the regular `iter` for the lack of refcount checks.
     #[inline]
-    pub fn iter_all(&self) -> ReadIter<T> {
-        ReadIter {
+    pub fn iter_all(&self) -> Iter<T> {
+        Iter {
             storage: &self.inner,
             skip_lost: false,
             index: 0,
@@ -323,8 +336,8 @@ impl<T> Storage<T> {
     /// only when you explicitly call [`sync_pending`](struct.Storage.html#method.sync_pending).
     /// It means, you can get wrong results when calling this function before updating pending.
     #[inline]
-    pub fn iter_mut(&mut self) -> WriteIter<T> {
-        WriteIter {
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        IterMut {
             storage: &mut self.inner,
             skip_lost: true,
             index: 0,
@@ -334,8 +347,8 @@ impl<T> Storage<T> {
     /// Iterate all components that are stored, even if not referenced, mutably.
     /// This can be faster than the regular `iter_mut` for the lack of refcount checks.
     #[inline]
-    pub fn iter_all_mut(&mut self) -> WriteIter<T> {
-        WriteIter {
+    pub fn iter_all_mut(&mut self) -> IterMut<T> {
+        IterMut {
             storage: &mut self.inner,
             skip_lost: false,
             index: 0,
@@ -343,7 +356,7 @@ impl<T> Storage<T> {
     }
 
     /// Pin an iterated item with a newly created `Pointer`.
-    pub fn pin(&self, item: &ReadItem<T>) -> Pointer<T> {
+    pub fn pin(&self, item: &Item<T>) -> Pointer<T> {
         let mut pending = self.pending.lock();
         pending.add_ref.push(item.index);
         Pointer {
@@ -447,22 +460,22 @@ impl<T> Drop for Pointer<T> {
     }
 }
 
-/// The item of `ReadIter`.
+/// The item of `Iter`.
 #[derive(Debug, Clone, Copy)]
-pub struct ReadItem<'a, T: 'a> {
+pub struct Item<'a, T: 'a> {
     value: &'a T,
     index: Index,
 }
 
-impl<'a, T> ops::Deref for ReadItem<'a, T> {
+impl<'a, T> ops::Deref for Item<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
         self.value
     }
 }
 
-impl<'a, T> Iterator for ReadIter<'a, T> {
-    type Item = ReadItem<'a, T>;
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = Item<'a, T>;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let id = self.index;
@@ -471,7 +484,7 @@ impl<'a, T> Iterator for ReadIter<'a, T> {
             }
             self.index += 1;
             if !self.skip_lost || unsafe {*self.storage.meta.get_unchecked(id)} != 0 {
-                return Some(ReadItem {
+                return Some(Item {
                     value: unsafe { self.storage.data.get_unchecked(id) },
                     index: id,
                 })
@@ -481,29 +494,29 @@ impl<'a, T> Iterator for ReadIter<'a, T> {
 }
 
 
-/// The item of `WriteIter`.
+/// The item of `IterMut`.
 #[derive(Debug)]
-pub struct WriteItem<'a, T: 'a> {
+pub struct ItemMut<'a, T: 'a> {
     base: *mut T,
     index: Index,
     marker: PhantomData<&'a mut T>,
 }
 
-impl<'a, T> ops::Deref for WriteItem<'a, T> {
+impl<'a, T> ops::Deref for ItemMut<'a, T> {
     type Target = T;
     fn deref(&self) -> &T {
         unsafe{ & *self.base.offset(self.index as isize) }
     }
 }
 
-impl<'a, T> ops::DerefMut for WriteItem<'a, T> {
+impl<'a, T> ops::DerefMut for ItemMut<'a, T> {
     fn deref_mut(&mut self) -> &mut T {
         unsafe{ &mut *self.base.offset(self.index as isize) }
     }
 }
 
-impl<'a, T> Iterator for WriteIter<'a, T> {
-    type Item = WriteItem<'a, T>;
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = ItemMut<'a, T>;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let id = self.index;
@@ -512,151 +525,10 @@ impl<'a, T> Iterator for WriteIter<'a, T> {
             }
             self.index += 1;
             if !self.skip_lost || unsafe {*self.storage.meta.get_unchecked(id)} != 0 {
-                return Some(WriteItem {
+                return Some(ItemMut {
                     base: self.storage.data.as_mut_ptr(),
                     index: id,
                     marker: PhantomData,
-                })
-            }
-        }
-    }
-}
-
-
-/// Item of the streaming iterator.
-///
-/// [`Cursor`](struct.Cursor.html) and `CursorItem` are extremely useful
-/// when you need to iterate over [`Pointers`](struct.Pointer.html) in storage
-/// with ability to get other component in the same storage during iterating.
-///
-/// # Examples
-/// Unfortunately, you can't use common `for` loop,
-/// but you can use `while let` statement:
-///
-/// ```rust
-/// # let mut storage: froggy::Storage<i32> = froggy::Storage::new();
-/// let mut cursor = storage.cursor();
-/// while let Some(item) = cursor.next() {
-///    // ... your code
-/// }
-///
-/// ```
-/// While iterating, you can [`pin`](struct.CursorItem.html#method.pin) item
-/// with Pointer. Also you can [`look_ahead`](struct.CursorItem.html#method.look_ahead)
-/// and [`look_back`](struct.CursorItem.html#method.look_back) for other items
-/// in this storage.
-///
-/// ```rust
-/// # use froggy::WeakPointer;
-/// #[derive(Debug, PartialEq)]
-/// struct Node {
-///    pointer: Option<WeakPointer<Node>>,
-/// }
-/// //...
-/// # fn do_something(_: &Node) {}
-/// # fn try_main() -> Result<(), froggy::DeadComponentError> {
-/// # let mut storage = froggy::Storage::new();
-/// # let ptr1 = storage.create(Node { pointer: None });
-/// # let ptr2 = storage.create(Node { pointer: None });
-/// # storage[&ptr1].pointer = Some(ptr2.downgrade());
-/// # storage[&ptr2].pointer = Some(ptr1.downgrade());
-/// let mut cursor = storage.cursor();
-/// while let Some(mut item) = cursor.next() {
-///    // let's look for the other Node
-///    match item.pointer {
-///        Some(ref pointer) => {
-///            let ref pointer = pointer.upgrade()?;
-///            if let Ok(ref other_node) = item.look_back(pointer) {
-///                do_something(other_node);
-///            }
-///        },
-///        None => {},
-///    }
-/// }
-/// # Ok(())
-/// # }
-/// # fn main() { try_main(); }
-#[derive(Debug)]
-pub struct CursorItem<'a, T: 'a> {
-    slice: &'a mut [T],
-    pending: &'a PendingRef,
-    data: PointerData,
-}
-
-impl<'a, T> ops::Deref for CursorItem<'a, T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        unsafe{ self.slice.get_unchecked(self.data.get_index()) }
-    }
-}
-
-impl<'a, T> ops::DerefMut for CursorItem<'a, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        unsafe{ self.slice.get_unchecked_mut(self.data.get_index()) }
-    }
-}
-
-impl<'a, T> CursorItem<'a, T> {
-    /// Pin the item with a strong pointer.
-    pub fn pin(&self) -> Pointer<T> {
-        let epoch = {
-            let mut pending = self.pending.lock();
-            pending.add_ref.push(self.data.get_index());
-            pending.get_epoch(self.data.get_index())
-        };
-        Pointer {
-            data: self.data.with_epoch(epoch),
-            pending: self.pending.clone(),
-            marker: PhantomData,
-        }
-    }
-
-    /// Attempt to read an element before the cursor by a pointer.
-    ///
-    /// # Errors
-    /// Returns [`NotFoundError`](struct.NotFoundError.html) if there is no component
-    /// before current `CursorItem` in the `Storage`.
-    pub fn look_back(&self, pointer: &'a Pointer<T>) -> Result<&T, NotFoundError> {
-        debug_assert_eq!(pointer.data.get_storage_id(), self.data.get_storage_id());
-        let id = pointer.data.get_index();
-        if id < self.data.get_index() {
-            Ok(unsafe { self.slice.get_unchecked(id) })
-        } else {
-            Err(NotFoundError)
-        }
-    }
-
-    /// Attempt to read an element after the cursor by a pointer.
-    ///
-    /// # Errors
-    /// Returns [`NotFoundError`](struct.NotFoundError.html) if there is no component
-    /// after current `CursorItem` in the `Storage`.
-    pub fn look_ahead(&self, pointer: &'a Pointer<T>) -> Result<&T, NotFoundError> {
-        debug_assert_eq!(pointer.data.get_storage_id(), self.data.get_storage_id());
-        let id = pointer.data.get_index();
-        if id > self.data.get_index() {
-            debug_assert!(id < self.slice.len());
-            Ok(unsafe { self.slice.get_unchecked(id) })
-        } else {
-            Err(NotFoundError)
-        }
-    }
-}
-
-impl<'a, T> Cursor<'a, T> {
-    /// Advance the stream to the next item.
-    pub fn next(&mut self) -> Option<CursorItem<T>> {
-        loop {
-            let id = self.index;
-            if id >= self.storage.data.len() {
-                return None
-            }
-            self.index += 1;
-            if !self.skip_lost || unsafe {*self.storage.meta.get_unchecked(id)} != 0 {
-                return Some(CursorItem {
-                    slice: &mut self.storage.data,
-                    data: PointerData::new(id, 0, self.storage_id),
-                    pending: self.pending,
                 })
             }
         }
