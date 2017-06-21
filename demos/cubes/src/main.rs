@@ -125,8 +125,10 @@ fn create_cubes(nodes: &mut froggy::Storage<Node>,
                 levels: &froggy::Storage<Level>)
                 -> Vec<Cube>
 {
-    let root_mat = materials.iter().next().unwrap();
-    let root_lev = levels.iter().next().unwrap();
+    let mut mat_iter = materials.iter_all();
+    let mut lev_iter = levels.iter_all();
+    let root_mat = mat_iter.next().unwrap();
+    let root_lev = lev_iter.next().unwrap();
     let mut list = vec![
         Cube {
             node: nodes.create(Node {
@@ -142,14 +144,16 @@ fn create_cubes(nodes: &mut froggy::Storage<Node>,
             level: levels.pin(&root_lev),
         }
     ];
-    struct Stack {
+    struct Stack<'a> {
         parent: froggy::Pointer<Node>,
-        level_id: usize,
+        mat_iter: froggy::Iter<'a, Material>,
+        lev_iter: froggy::Iter<'a, Level>,
     }
     let mut stack = vec![
         Stack {
             parent: list[0].node.clone(),
-            level_id: 1,
+            mat_iter,
+            lev_iter,
         }
     ];
 
@@ -168,14 +172,14 @@ fn create_cubes(nodes: &mut froggy::Storage<Node>,
         })
     }).collect();
 
-    while let Some(next) = stack.pop() {
+    while let Some(mut next) = stack.pop() {
         //HACK: materials are indexed the same way as levels
         // it's fine for demostration purposes
-        let material = match materials.iter().nth(next.level_id) {
+        let material = match next.mat_iter.next() {
             Some(item) => materials.pin(&item),
             None => continue,
         };
-        let level = match levels.iter().nth(next.level_id) {
+        let level = match next.lev_iter.next() {
             Some(item) => levels.pin(&item),
             None => continue,
         };
@@ -191,7 +195,8 @@ fn create_cubes(nodes: &mut froggy::Storage<Node>,
             };
             stack.push(Stack {
                 parent: cube.node.clone(),
-                level_id: next.level_id + 1,
+                mat_iter: next.mat_iter.clone(),
+                lev_iter: next.lev_iter.clone(),
             });
             list.push(cube);
         }
