@@ -1,36 +1,28 @@
-use {Cursor, PendingRef, Pointer, PointerData};
+use {Cursor, PendingRef, Pointer, PointerData, Slice};
 use std::marker::PhantomData;
 use std::ops;
 
 
-/// A slice of a storage. Useful for cursor iteration.
-#[derive(Debug)]
-pub struct Slice<'a, T: 'a> {
-    slice: &'a mut [T],
-    offset: usize,
-}
-
 impl<'a, T> Slice<'a, T> {
+    /// Check if the slice contains no elements.
+    pub fn is_empty(&self) -> bool {
+        self.slice.is_empty()
+    }
+
     /// Get a reference by pointer. Returns None if an element
     /// is outside of the slice.
     pub fn get(&'a self, pointer: &Pointer<T>) -> Option<&'a T> {
-        let index = pointer.data.get_index();
-        if index >= self.offset {
-            self.slice.get(index - self.offset)
-        } else {
-            None
-        }
+        debug_assert_eq!(pointer.data.get_storage_id(), self.offset.get_storage_id());
+        let index = pointer.data.get_index().wrapping_sub(self.offset.get_index());
+        self.slice.get(index as usize)
     }
 
     /// Get a mutable reference by pointer. Returns None if an element
     /// is outside of the slice.
     pub fn get_mut(&'a mut self, pointer: &Pointer<T>) -> Option<&'a mut T> {
-        let index = pointer.data.get_index();
-        if index >= self.offset {
-            self.slice.get_mut(index - self.offset)
-        } else {
-            None
-        }
+        debug_assert_eq!(pointer.data.get_storage_id(), self.offset.get_storage_id());
+        let index = pointer.data.get_index().wrapping_sub(self.offset.get_index());
+        self.slice.get_mut(index as usize)
     }
 }
 
@@ -131,18 +123,13 @@ impl<'a, T> Cursor<'a, T> {
                 None => return None,
                 Some(&0) => (),
                 Some(_) => {
-                    let (left, temp) = self.storage.data.split_at_mut(id);
-                    let (cur, right) = temp.split_at_mut(1);
+                    let data = PointerData::new(id, 0, self.storage_id);
+                    let (left, item, right) = self.storage.split(data);
                     let item = CursorItem {
-                        item: unsafe { cur.get_unchecked_mut(0) },
-                        data: PointerData::new(id, 0, self.storage_id),
+                        item, data,
                         pending: self.pending,
                     };
-                    return Some((
-                        Slice { slice: left, offset: 0 },
-                        item,
-                        Slice { slice: right, offset: self.index },
-                    ))
+                    return Some((left, item, right));
                 },
             }
         }

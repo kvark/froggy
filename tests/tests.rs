@@ -78,6 +78,20 @@ fn cursor() {
 }
 
 #[test]
+fn slice() {
+    let mut storage = Storage::new();
+    let a = storage.create(1u32);
+    let b = storage.create(2u32);
+    let c = storage.create(3u32);
+    let (left, mid, right) = storage.split(&b);
+    assert_eq!(*mid, 2);
+    assert_eq!(left.get(&a), Some(&1));
+    assert_eq!(right.get(&c), Some(&3));
+    assert!(left.get(&b).is_none() && left.get(&c).is_none());
+    assert!(right.get(&a).is_none() && right.get(&b).is_none());
+}
+
+#[test]
 fn storage_default() {
     let mut storage = Storage::default();
     storage.create(1u32);

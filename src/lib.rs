@@ -36,7 +36,7 @@ use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::vec::Drain;
 use bitfield::PointerData;
 
-pub use cursor::{CursorItem, Slice};
+pub use cursor::CursorItem;
 pub use weak::WeakPointer;
 
 type Index = usize;
@@ -57,12 +57,33 @@ static STORAGE_UID: AtomicUsize = ATOMIC_USIZE_INIT;
 #[derive(Debug, PartialEq)]
 pub struct DeadComponentError;
 
+/// A slice of a storage. Useful for cursor iteration.
+#[derive(Debug)]
+pub struct Slice<'a, T: 'a> {
+    slice: &'a mut [T],
+    offset: PointerData,
+}
+
 /// Inner storage data that is locked by `RwLock`.
 #[derive(Debug)]
 struct StorageInner<T> {
     data: Vec<T>,
     meta: Vec<RefCount>,
     free_list: Vec<PointerData>,
+}
+
+impl<T> StorageInner<T> {
+    fn split(&mut self, offset: PointerData) -> (Slice<T>, &mut T, Slice<T>) {
+        let sid = offset.get_storage_id();
+        let index = offset.get_index();
+        let (left, temp) = self.data.split_at_mut(index as usize);
+        let (cur, right) = temp.split_at_mut(1);
+        (
+            Slice { slice: left, offset: PointerData::new(0, 0, sid) },
+            unsafe { cur.get_unchecked_mut(0) },
+            Slice { slice: right, offset: PointerData::new(index+1, 0, sid) },
+        )
+    }
 }
 
 /// Pending reference counts updates.
@@ -350,6 +371,15 @@ impl<T> Storage<T> {
             pending: self.pending.clone(),
             marker: PhantomData,
         }
+    }
+
+    /// Split the storage according to the provided pointer, returning
+    /// the (left slice, pointed data, right slice) triple, where:
+    /// left slice contains all the elements that would be iterated prior to the given one,
+    /// right slice contains all the elements that would be iterated after the given one
+    pub fn split(&mut self, pointer: &Pointer<T>) -> (Slice<T>, &mut T, Slice<T>) {
+        debug_assert_eq!(pointer.data.get_storage_id(), self.id);
+        self.inner.split(pointer.data)
     }
 
     /// Produce a streaming mutable iterator over components that are still referenced.
