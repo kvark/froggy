@@ -330,9 +330,9 @@ fn main() {
         // re-compute world spaces, using streaming iteration
         {
             let mut cursor = node_store.cursor();
-            while let Some(mut item) = cursor.next() {
+            while let Some((left, mut item, _)) = cursor.next() {
                 item.world = match item.parent {
-                    Some(ref parent) => item.look_back(parent).unwrap().world.concat(&item.local),
+                    Some(ref parent) => left.get(parent).unwrap().world.concat(&item.local),
                     None => item.local,
                 };
             }

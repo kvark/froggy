@@ -27,11 +27,11 @@ mod bitfield;
 mod cursor;
 mod weak;
 
+use spin::Mutex;
 use std::iter::FromIterator;
 use std::marker::PhantomData;
-use std::ops;
+use std::{ops, slice};
 use std::sync::Arc;
-use spin::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::vec::Drain;
 use bitfield::PointerData;
@@ -57,12 +57,12 @@ static STORAGE_UID: AtomicUsize = ATOMIC_USIZE_INIT;
 #[derive(Debug, PartialEq)]
 pub struct DeadComponentError;
 
-/// The error type which is returned from using
-/// [`look_back`](struct.CursorItem.html#method.look_back)
-/// and [`look_ahead`](struct.CursorItem.html#method.look_ahead) of
-/// [`CursorItem`](struct.CursorItem.html).
-#[derive(Debug, PartialEq)]
-pub struct NotFoundError;
+/// A slice of a storage. Useful for cursor iteration.
+#[derive(Debug)]
+pub struct Slice<'a, T: 'a> {
+    slice: &'a mut [T],
+    offset: PointerData,
+}
 
 /// Inner storage data that is locked by `RwLock`.
 #[derive(Debug)]
@@ -70,6 +70,20 @@ struct StorageInner<T> {
     data: Vec<T>,
     meta: Vec<RefCount>,
     free_list: Vec<PointerData>,
+}
+
+impl<T> StorageInner<T> {
+    fn split(&mut self, offset: PointerData) -> (Slice<T>, &mut T, Slice<T>) {
+        let sid = offset.get_storage_id();
+        let index = offset.get_index();
+        let (left, temp) = self.data.split_at_mut(index as usize);
+        let (cur, right) = temp.split_at_mut(1);
+        (
+            Slice { slice: left, offset: PointerData::new(0, 0, sid) },
+            unsafe { cur.get_unchecked_mut(0) },
+            Slice { slice: right, offset: PointerData::new(index+1, 0, sid) },
+        )
+    }
 }
 
 /// Pending reference counts updates.
@@ -171,9 +185,8 @@ impl<'a, T> Clone for Iter<'a, T> {
 /// Iterator for writing components.
 #[derive(Debug)]
 pub struct IterMut<'a, T: 'a> {
-    storage: &'a mut StorageInner<T>,
-    skip_lost: bool,
-    index: Index,
+    data: slice::IterMut<'a, T>,
+    meta: slice::Iter<'a, RefCount>,
 }
 
 /// Streaming iterator providing mutable components
@@ -184,7 +197,6 @@ pub struct IterMut<'a, T: 'a> {
 pub struct Cursor<'a, T: 'a> {
     storage: &'a mut StorageInner<T>,
     pending: &'a PendingRef,
-    skip_lost: bool,
     index: Index,
     storage_id: StorageId,
 }
@@ -230,14 +242,10 @@ impl<'a, T> IntoIterator for &'a Storage<T> {
 }
 
 impl<'a, T> IntoIterator for &'a mut Storage<T> {
-    type Item = ItemMut<'a, T>;
+    type Item = &'a mut T;
     type IntoIter = IterMut<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
-        IterMut {
-            storage: &mut self.inner,
-            skip_lost: true,
-            index: 0,
-        }
+        self.iter_mut()
     }
 }
 
@@ -338,21 +346,16 @@ impl<T> Storage<T> {
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<T> {
         IterMut {
-            storage: &mut self.inner,
-            skip_lost: true,
-            index: 0,
+            data: self.inner.data.iter_mut(),
+            meta: self.inner.meta.iter(),
         }
     }
 
     /// Iterate all components that are stored, even if not referenced, mutably.
     /// This can be faster than the regular `iter_mut` for the lack of refcount checks.
     #[inline]
-    pub fn iter_all_mut(&mut self) -> IterMut<T> {
-        IterMut {
-            storage: &mut self.inner,
-            skip_lost: false,
-            index: 0,
-        }
+    pub fn iter_all_mut(&mut self) -> slice::IterMut<T> {
+        self.inner.data.iter_mut()
     }
 
     /// Pin an iterated item with a newly created `Pointer`.
@@ -370,6 +373,15 @@ impl<T> Storage<T> {
         }
     }
 
+    /// Split the storage according to the provided pointer, returning
+    /// the (left slice, pointed data, right slice) triple, where:
+    /// left slice contains all the elements that would be iterated prior to the given one,
+    /// right slice contains all the elements that would be iterated after the given one
+    pub fn split(&mut self, pointer: &Pointer<T>) -> (Slice<T>, &mut T, Slice<T>) {
+        debug_assert_eq!(pointer.data.get_storage_id(), self.id);
+        self.inner.split(pointer.data)
+    }
+
     /// Produce a streaming mutable iterator over components that are still referenced.
     /// ### Attention
     /// Information about live components is updated not for all changes, but
@@ -380,20 +392,6 @@ impl<T> Storage<T> {
         Cursor {
             storage: &mut self.inner,
             pending: &self.pending,
-            skip_lost: true,
-            index: 0,
-            storage_id: self.id,
-        }
-    }
-
-    /// Produce a streaming iterator over all stored components.
-    /// This can be faster than the regular `cursor` for the lack of refcount checks.
-    #[inline]
-    pub fn cursor_all(&mut self) -> Cursor<T> {
-        Cursor {
-            storage: &mut self.inner,
-            pending: &self.pending,
-            skip_lost: false,
             index: 0,
             storage_id: self.id,
         }
@@ -493,44 +491,12 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
-
-/// The item of `IterMut`.
-#[derive(Debug)]
-pub struct ItemMut<'a, T: 'a> {
-    base: *mut T,
-    index: Index,
-    marker: PhantomData<&'a mut T>,
-}
-
-impl<'a, T> ops::Deref for ItemMut<'a, T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        unsafe{ & *self.base.offset(self.index as isize) }
-    }
-}
-
-impl<'a, T> ops::DerefMut for ItemMut<'a, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        unsafe{ &mut *self.base.offset(self.index as isize) }
-    }
-}
-
 impl<'a, T> Iterator for IterMut<'a, T> {
-    type Item = ItemMut<'a, T>;
+    type Item = &'a mut T;
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let id = self.index;
-            if id >= self.storage.data.len() {
-                return None
-            }
-            self.index += 1;
-            if !self.skip_lost || unsafe {*self.storage.meta.get_unchecked(id)} != 0 {
-                return Some(ItemMut {
-                    base: self.storage.data.as_mut_ptr(),
-                    index: id,
-                    marker: PhantomData,
-                })
-            }
+        while let Some(&0) = self.meta.next() {
+            self.data.next();
         }
+        self.data.next()
     }
 }

@@ -28,9 +28,9 @@ fn main() {
     // compute them with look-back
     let mut cursor = storage.cursor();
     cursor.next().unwrap(); //skip first
-    while let Some(mut item) = cursor.next() {
+    while let Some((left, mut item, _)) = cursor.next() {
         item.value = item.prev.iter().map(|prev|
-            item.look_back(prev).unwrap().value
+            left.get(prev).unwrap().value
             ).sum();
         println!("{}", item.value);
     }

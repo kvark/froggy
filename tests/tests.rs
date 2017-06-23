@@ -71,10 +71,24 @@ fn cursor() {
         data.iter().cloned().collect();
     let mut cursor = storage.cursor();
     data.reverse();
-    while let Some(item) = cursor.next() {
+    while let Some((_, item, _)) = cursor.next() {
         assert_eq!(data.pop().as_ref(), Some(&*item));
         let _ptr = item.pin();
     }
+}
+
+#[test]
+fn slice() {
+    let mut storage = Storage::new();
+    let a = storage.create(1u32);
+    let b = storage.create(2u32);
+    let c = storage.create(3u32);
+    let (left, mid, right) = storage.split(&b);
+    assert_eq!(*mid, 2);
+    assert_eq!(left.get(&a), Some(&1));
+    assert_eq!(right.get(&c), Some(&3));
+    assert!(left.get(&b).is_none() && left.get(&c).is_none());
+    assert!(right.get(&a).is_none() && right.get(&b).is_none());
 }
 
 #[test]
@@ -126,7 +140,6 @@ fn test_send() {
     assert_send::<Pointer<i32>>();
     assert_send::<WeakPointer<i32>>();
     assert_send::<froggy::DeadComponentError>();
-    assert_send::<froggy::NotFoundError>();
 }
 
 #[test]
@@ -136,5 +149,4 @@ fn test_sync() {
     assert_sync::<Pointer<i32>>();
     assert_sync::<WeakPointer<i32>>();
     assert_sync::<froggy::DeadComponentError>();
-    assert_sync::<froggy::NotFoundError>();
 }
