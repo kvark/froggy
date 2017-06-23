@@ -27,11 +27,11 @@ mod bitfield;
 mod cursor;
 mod weak;
 
+use spin::Mutex;
 use std::iter::FromIterator;
 use std::marker::PhantomData;
-use std::ops;
+use std::{ops, slice};
 use std::sync::Arc;
-use spin::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::vec::Drain;
 use bitfield::PointerData;
@@ -171,9 +171,8 @@ impl<'a, T> Clone for Iter<'a, T> {
 /// Iterator for writing components.
 #[derive(Debug)]
 pub struct IterMut<'a, T: 'a> {
-    storage: &'a mut StorageInner<T>,
-    skip_lost: bool,
-    index: Index,
+    data: slice::IterMut<'a, T>,
+    meta: slice::Iter<'a, RefCount>,
 }
 
 /// Streaming iterator providing mutable components
@@ -230,14 +229,10 @@ impl<'a, T> IntoIterator for &'a Storage<T> {
 }
 
 impl<'a, T> IntoIterator for &'a mut Storage<T> {
-    type Item = ItemMut<'a, T>;
+    type Item = &'a mut T;
     type IntoIter = IterMut<'a, T>;
     fn into_iter(self) -> Self::IntoIter {
-        IterMut {
-            storage: &mut self.inner,
-            skip_lost: true,
-            index: 0,
-        }
+        self.iter_mut()
     }
 }
 
@@ -338,21 +333,16 @@ impl<T> Storage<T> {
     #[inline]
     pub fn iter_mut(&mut self) -> IterMut<T> {
         IterMut {
-            storage: &mut self.inner,
-            skip_lost: true,
-            index: 0,
+            data: self.inner.data.iter_mut(),
+            meta: self.inner.meta.iter(),
         }
     }
 
     /// Iterate all components that are stored, even if not referenced, mutably.
     /// This can be faster than the regular `iter_mut` for the lack of refcount checks.
     #[inline]
-    pub fn iter_all_mut(&mut self) -> IterMut<T> {
-        IterMut {
-            storage: &mut self.inner,
-            skip_lost: false,
-            index: 0,
-        }
+    pub fn iter_all_mut(&mut self) -> slice::IterMut<T> {
+        self.inner.data.iter_mut()
     }
 
     /// Pin an iterated item with a newly created `Pointer`.
@@ -493,44 +483,12 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
-
-/// The item of `IterMut`.
-#[derive(Debug)]
-pub struct ItemMut<'a, T: 'a> {
-    base: *mut T,
-    index: Index,
-    marker: PhantomData<&'a mut T>,
-}
-
-impl<'a, T> ops::Deref for ItemMut<'a, T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        unsafe{ & *self.base.offset(self.index as isize) }
-    }
-}
-
-impl<'a, T> ops::DerefMut for ItemMut<'a, T> {
-    fn deref_mut(&mut self) -> &mut T {
-        unsafe{ &mut *self.base.offset(self.index as isize) }
-    }
-}
-
 impl<'a, T> Iterator for IterMut<'a, T> {
-    type Item = ItemMut<'a, T>;
+    type Item = &'a mut T;
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let id = self.index;
-            if id >= self.storage.data.len() {
-                return None
-            }
-            self.index += 1;
-            if !self.skip_lost || unsafe {*self.storage.meta.get_unchecked(id)} != 0 {
-                return Some(ItemMut {
-                    base: self.storage.data.as_mut_ptr(),
-                    index: id,
-                    marker: PhantomData,
-                })
-            }
+        while let Some(&0) = self.meta.next() {
+            self.data.next();
         }
+        self.data.next()
     }
 }
