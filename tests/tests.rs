@@ -71,7 +71,7 @@ fn cursor() {
         data.iter().cloned().collect();
     let mut cursor = storage.cursor();
     data.reverse();
-    while let Some(item) = cursor.next() {
+    while let Some((_, item, _)) = cursor.next() {
         assert_eq!(data.pop().as_ref(), Some(&*item));
         let _ptr = item.pin();
     }
@@ -126,7 +126,6 @@ fn test_send() {
     assert_send::<Pointer<i32>>();
     assert_send::<WeakPointer<i32>>();
     assert_send::<froggy::DeadComponentError>();
-    assert_send::<froggy::NotFoundError>();
 }
 
 #[test]
@@ -136,5 +135,4 @@ fn test_sync() {
     assert_sync::<Pointer<i32>>();
     assert_sync::<WeakPointer<i32>>();
     assert_sync::<froggy::DeadComponentError>();
-    assert_sync::<froggy::NotFoundError>();
 }

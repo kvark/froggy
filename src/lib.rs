@@ -36,7 +36,7 @@ use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::vec::Drain;
 use bitfield::PointerData;
 
-pub use cursor::CursorItem;
+pub use cursor::{CursorItem, Slice};
 pub use weak::WeakPointer;
 
 type Index = usize;
@@ -56,13 +56,6 @@ static STORAGE_UID: AtomicUsize = ATOMIC_USIZE_INIT;
 /// [`WeakPointer`](struct.WeakPointer.html).
 #[derive(Debug, PartialEq)]
 pub struct DeadComponentError;
-
-/// The error type which is returned from using
-/// [`look_back`](struct.CursorItem.html#method.look_back)
-/// and [`look_ahead`](struct.CursorItem.html#method.look_ahead) of
-/// [`CursorItem`](struct.CursorItem.html).
-#[derive(Debug, PartialEq)]
-pub struct NotFoundError;
 
 /// Inner storage data that is locked by `RwLock`.
 #[derive(Debug)]
@@ -183,7 +176,6 @@ pub struct IterMut<'a, T: 'a> {
 pub struct Cursor<'a, T: 'a> {
     storage: &'a mut StorageInner<T>,
     pending: &'a PendingRef,
-    skip_lost: bool,
     index: Index,
     storage_id: StorageId,
 }
@@ -370,20 +362,6 @@ impl<T> Storage<T> {
         Cursor {
             storage: &mut self.inner,
             pending: &self.pending,
-            skip_lost: true,
-            index: 0,
-            storage_id: self.id,
-        }
-    }
-
-    /// Produce a streaming iterator over all stored components.
-    /// This can be faster than the regular `cursor` for the lack of refcount checks.
-    #[inline]
-    pub fn cursor_all(&mut self) -> Cursor<T> {
-        Cursor {
-            storage: &mut self.inner,
-            pending: &self.pending,
-            skip_lost: false,
             index: 0,
             storage_id: self.id,
         }
