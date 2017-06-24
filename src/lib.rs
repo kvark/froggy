@@ -397,6 +397,18 @@ impl<T> Storage<T> {
         }
     }
 
+    /// Returns a cursor to the end of the storage, for backwards streaming iteration.
+    #[inline]
+    pub fn cursor_end(&mut self) -> Cursor<T> {
+        let total = self.inner.data.len();
+        Cursor {
+            storage: &mut self.inner,
+            pending: &self.pending,
+            index: total,
+            storage_id: self.id,
+        }
+    }
+
     /// Add a new component to the storage, returning the `Pointer` to it.
     pub fn create(&mut self, value: T) -> Pointer<T> {
         let data = match self.inner.free_list.pop() {
@@ -498,5 +510,14 @@ impl<'a, T> Iterator for IterMut<'a, T> {
             self.data.next();
         }
         self.data.next()
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        while let Some(&0) = self.meta.next_back() {
+            self.data.next_back();
+        }
+        self.data.next_back()
     }
 }

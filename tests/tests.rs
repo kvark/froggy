@@ -66,14 +66,19 @@ fn weak_epoch() {
 
 #[test]
 fn cursor() {
-    let mut data = vec![5 as i32, 7, 4, 6, 7];
+    let data = vec![5 as i32, 7, 4, 6, 7];
     let mut storage: Storage<_> =
         data.iter().cloned().collect();
+
     let mut cursor = storage.cursor();
-    data.reverse();
+    let mut iter = data.iter();
     while let Some((_, item, _)) = cursor.next() {
-        assert_eq!(data.pop().as_ref(), Some(&*item));
+        assert_eq!(iter.next(), Some(&*item));
         let _ptr = item.pin();
+    }
+
+    while let Some((_, item, _)) = cursor.prev() {
+        assert_eq!(iter.next_back(), Some(&*item));
     }
 }
 
