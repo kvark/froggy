@@ -114,23 +114,43 @@ impl<'a, T> CursorItem<'a, T> {
 }
 
 impl<'a, T> Cursor<'a, T> {
+    fn split(&mut self, index: usize) -> (Slice<T>, CursorItem<T>, Slice<T>) {
+        let data = PointerData::new(index, 0, self.storage_id);
+        let (left, item, right) = self.storage.split(data);
+        let item = CursorItem {
+            item, data,
+            pending: self.pending,
+        };
+        (left, item, right)
+    }
+
     /// Advance the stream to the next item.
     pub fn next(&mut self) -> Option<(Slice<T>, CursorItem<T>, Slice<T>)> {
         loop {
             let id = self.index;
             self.index += 1;
             match self.storage.meta.get(id) {
-                None => return None,
-                Some(&0) => (),
-                Some(_) => {
-                    let data = PointerData::new(id, 0, self.storage_id);
-                    let (left, item, right) = self.storage.split(data);
-                    let item = CursorItem {
-                        item, data,
-                        pending: self.pending,
-                    };
-                    return Some((left, item, right));
+                None => {
+                    self.index = id; // prevent the bump of the index
+                    return None;
                 },
+                Some(&0) => (),
+                Some(_) => return Some(self.split(id)),
+            }
+        }
+    }
+
+    /// Advance the stream to the previous item.
+    pub fn prev(&mut self) -> Option<(Slice<T>, CursorItem<T>, Slice<T>)> {
+        loop {
+            if self.index == 0 {
+                return None
+            }
+            self.index -= 1;
+            let id = self.index;
+            debug_assert!(id < self.storage.meta.len());
+            if *unsafe { self.storage.meta.get_unchecked(id) } != 0 {
+                return Some(self.split(id));
             }
         }
     }
