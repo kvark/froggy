@@ -83,6 +83,23 @@ fn cursor() {
 }
 
 #[test]
+fn partial_ord() {
+    use std::cmp::Ordering;
+    let mut storage = Storage::new();
+    let a = storage.create(1u32);
+    let b = storage.create(1u32);
+    let c = storage.create(1u32);
+    assert_eq!(a.partial_cmp(&b), Some(Ordering::Less));
+    assert_eq!(c.partial_cmp(&b), Some(Ordering::Greater));
+    let a2 = storage.pin(&storage.iter().next().unwrap());
+    assert_eq!(a.partial_cmp(&a2), Some(Ordering::Equal));
+    let mut storage2 = Storage::new();
+    let a3 = storage2.create(1u32);
+    // Different storages
+    assert_eq!(a.partial_cmp(&a3), None);
+}
+
+#[test]
 fn slice() {
     let mut storage = Storage::new();
     let a = storage.create(1u32);
