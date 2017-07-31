@@ -182,6 +182,18 @@ impl<'a, T> Clone for Iter<'a, T> {
     }
 }
 
+impl<T> PartialOrd for Pointer<T> {
+    fn partial_cmp(&self, other: &Pointer<T>) -> Option<std::cmp::Ordering> {
+        if self.data.get_storage_id() == other.data.get_storage_id() {
+            debug_assert!(self.data.get_index() != other.data.get_index() ||
+                self.data.get_epoch() == self.data.get_epoch());
+            self.data.get_index().partial_cmp(&other.data.get_index())
+        } else {
+            None
+        }
+    }
+}
+
 /// Iterator for writing components.
 #[derive(Debug)]
 pub struct IterMut<'a, T: 'a> {
