@@ -3,9 +3,20 @@ use {Epoch, Index, StorageId};
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct PointerData(u64);
 
+#[cfg(target_pointer_width = "32")]
+const INDEX_BITS: u8 = 20;
+#[cfg(target_pointer_width = "32")]
+const EPOCH_BITS: u8 = 8;
+#[cfg(target_pointer_width = "32")]
+const STORAGE_ID_BITS: u8 = 4;
+
+#[cfg(target_pointer_width = "64")]
 const INDEX_BITS: u8 = 40;
+#[cfg(target_pointer_width = "64")]
 const EPOCH_BITS: u8 = 16;
+#[cfg(target_pointer_width = "64")]
 const STORAGE_ID_BITS: u8 = 8;
+
 const INDEX_MASK: u64 = (1 << INDEX_BITS) - 1;
 const EPOCH_OFFSET: u8 = INDEX_BITS;
 const EPOCH_MASK: u64 = ((1 << EPOCH_BITS) - 1) << EPOCH_OFFSET;
@@ -48,6 +59,9 @@ mod tests {
 
     #[test]
     fn sizes() {
+        #[cfg(target_pointer_width = "32")]
+        assert_eq!(INDEX_BITS + EPOCH_BITS + STORAGE_ID_BITS, 32);
+        #[cfg(target_pointer_width = "64")]
         assert_eq!(INDEX_BITS + EPOCH_BITS + STORAGE_ID_BITS, 64);
         assert!(size_of::<Index>() * 8 >= INDEX_BITS as usize);
         assert!(size_of::<Epoch>() * 8 >= EPOCH_BITS as usize);
