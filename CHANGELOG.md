@@ -1,5 +1,11 @@
 ## Change Log
 
+### v0.4 (2017-08-28)
+  - crate now follows almost all points from Rust API Guidelines ([#52](https://github.com/kvark/froggy/pull/52) [#62](https://github.com/kvark/froggy/pull/62))
+  - `iter` and `iter_mut` methods now return only alive components ([#55](https://github.com/kvark/froggy/pull/55))
+  - Cursor concept has been changed a lot to provide more power ([#58](https://github.com/kvark/froggy/pull/58) [#59](https://github.com/kvark/froggy/pull/59) [#60(https://github.com/kvark/froggy/pull/60))
+  - serious bug on 32-bit machines has been fixed ([#64](https://github.com/kvark/froggy/pull/64))
+
 ### v0.3 (2017-05-15)
   - removed storage locks ([#32](https://github.com/kvark/froggy/pull/32) [#33](https://github.com/kvark/froggy/pull/33))
   - optimized epoch initialization ([#37](https://github.com/kvark/froggy/pull/37))
