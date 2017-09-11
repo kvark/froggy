@@ -30,7 +30,7 @@ mod weak;
 use spin::Mutex;
 use std::iter::FromIterator;
 use std::marker::PhantomData;
-use std::{ops, slice};
+use std::{fmt, ops, slice};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::vec::Drain;
@@ -108,6 +108,7 @@ impl Pending {
 
 /// Shared pointer to the pending updates.
 type PendingRef = Arc<Mutex<Pending>>;
+
 /// Component storage type.
 /// Manages the components and allows for efficient processing.
 /// See also: [Pointer](struct.Pointer.html)
@@ -148,11 +149,31 @@ pub struct Storage<T> {
 /// // Pointers to the same component are equal
 /// assert_eq!(ptr1, ptr2);
 /// ```
-#[derive(Debug)]
 pub struct Pointer<T> {
     data: PointerData,
     pending: PendingRef,
     marker: PhantomData<T>,
+}
+
+impl<T> fmt::Debug for Pointer<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        /// Debug output type for `Self`.
+        #[derive(Debug)]
+        pub struct Pointer<'a> {
+            /// All integer entries are `usize` for future-proofing.
+            index: usize,
+            epoch: usize,
+            storage_id: usize,
+            pending: &'a Pending,
+        }
+
+        Pointer {
+            index: self.data.get_index() as usize,
+            epoch: self.data.get_epoch() as usize,
+            storage_id: self.data.get_storage_id() as usize,
+            pending: &self.pending.lock(),
+        }.fmt(f)
+    }
 }
 
 impl<T> Pointer<T> {
