@@ -1,6 +1,6 @@
 use {Epoch, Index, StorageId};
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Hash)]
 pub struct PointerData(u64);
 
 #[cfg(target_pointer_width = "32")]

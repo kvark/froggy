@@ -172,3 +172,13 @@ fn test_sync() {
     assert_sync::<WeakPointer<i32>>();
     assert_sync::<froggy::DeadComponentError>();
 }
+
+#[test]
+fn test_hash() {
+    use std::collections::HashMap;
+    let mut hash_map = HashMap::new();
+    let mut storage = Storage::new();
+    let ptr = storage.create(1u8);
+    hash_map.insert(ptr.clone(), 23u8);
+    assert_eq!(hash_map.get(&ptr), Some(&23u8));
+}
