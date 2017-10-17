@@ -34,6 +34,7 @@ use std::{fmt, ops, slice};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
 use std::vec::Drain;
+use std::hash::{Hash, Hasher};
 use bitfield::PointerData;
 
 pub use cursor::CursorItem;
@@ -334,7 +335,7 @@ impl<T> Storage<T> {
         }
         // pending reference subs
         {
-            let (refs, mut epoch) = pending.drain_sub();
+            let (refs, epoch) = pending.drain_sub();
             for index in refs {
                 self.inner.meta[index] -= 1;
                 if self.inner.meta[index] == 0 {
@@ -495,6 +496,12 @@ impl<T> PartialEq for Pointer<T> {
 }
 
 impl<T> Eq for Pointer<T> {}
+
+impl<T> Hash for Pointer<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.data.hash(state);
+    }
+}
 
 impl<T> Drop for Pointer<T> {
     #[inline]
