@@ -19,7 +19,7 @@ However, CGS has a number of advantages:
 
 */
 #![warn(missing_docs)]
-#![doc(html_root_url = "https://docs.rs/froggy/0.4.0")]
+#![doc(html_root_url = "https://docs.rs/froggy/0.4.4")]
 
 extern crate spin;
 
