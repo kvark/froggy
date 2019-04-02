@@ -24,3 +24,22 @@ members = ["demos/cubes"]
 
 [dependencies]
 spin = { version="0.5", default-features=false }
+
+[dev-dependencies]
+criterion = "0.2"
+
+[[bench]]
+name = "ecs_pos_vel_aligned"
+harness = false
+
+[[bench]]
+name = "ecs_pos_vel_spread"
+harness = false
+
+[[bench]]
+name = "sc_graph_aligned"
+harness = false
+
+[[bench]]
+name = "sc_graph_spread"
+harness = false

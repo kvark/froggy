@@ -1,10 +1,5 @@
-#![feature(test)]
-
-extern crate froggy;
-extern crate test;
-
+use criterion::{criterion_group, criterion_main, Criterion};
 use froggy::{Pointer, Storage};
-use test::Bencher;
 
 mod bench_setup;
 use bench_setup::{Position, N_POS, N_POS_VEL};
@@ -55,23 +50,26 @@ fn build() -> World {
     world
 }
 
-#[bench]
-fn bench_build(b: &mut Bencher) {
-    b.iter(build);
+fn bench_build(c: &mut Criterion) {
+    c.bench_function("build-ecs-spread", |b| b.iter(|| build()));
 }
 
-#[bench]
-fn bench_update(b: &mut Bencher) {
+fn bench_update(c: &mut Criterion) {
     let mut world = build();
 
-    b.iter(|| {
-        for e in &world.entities {
-            if let Some(ref vel) = e.vel {
-                let mut p = &mut world.pos[&e.pos];
-                let v = &world.vel[vel];
-                p.x += v.dx;
-                p.y += v.dy;
+    c.bench_function("update-ecs-spread", move |b| {
+        b.iter(|| {
+            for e in &world.entities {
+                if let Some(ref vel) = e.vel {
+                    let mut p = &mut world.pos[&e.pos];
+                    let v = &world.vel[vel];
+                    p.x += v.dx;
+                    p.y += v.dy;
+                }
             }
-        }
+        })
     });
 }
+
+criterion_group!(benches, bench_build, bench_update);
+criterion_main!(benches);
