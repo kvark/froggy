@@ -290,14 +290,14 @@ impl<T> Storage<T> {
         let uid = STORAGE_UID.fetch_add(1, Ordering::Relaxed) as StorageId;
         Storage {
             inner: StorageInner {
-                data: data,
-                meta: meta,
+                data,
+                meta,
                 free_list: Vec::new(),
             },
             pending: Arc::new(Mutex::new(Pending {
                 add_ref: Vec::new(),
                 sub_ref: Vec::new(),
-                epoch: epoch,
+                epoch,
             })),
             id: uid,
         }
@@ -462,7 +462,7 @@ impl<T> Storage<T> {
             },
         };
         Pointer {
-            data: data,
+            data,
             pending: self.pending.clone(),
             marker: PhantomData,
         }
