@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use {Pointer, PointerData, PendingRef, DeadComponentError};
+use {DeadComponentError, PendingRef, Pointer, PointerData};
 
 /// Weak variant of `Pointer`.
 /// `WeakPointer`s are used to avoid deadlocking when dropping structures with cycled references to each other.

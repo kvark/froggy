@@ -27,15 +27,15 @@ mod bitfield;
 mod cursor;
 mod weak;
 
+use bitfield::PointerData;
 use spin::Mutex;
+use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::marker::PhantomData;
-use std::{fmt, ops, slice};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
+use std::sync::Arc;
 use std::vec::Drain;
-use std::hash::{Hash, Hasher};
-use bitfield::PointerData;
+use std::{fmt, ops, slice};
 
 pub use cursor::CursorItem;
 pub use weak::WeakPointer;
@@ -80,9 +80,15 @@ impl<T> StorageInner<T> {
         let (left, temp) = self.data.split_at_mut(index as usize);
         let (cur, right) = temp.split_at_mut(1);
         (
-            Slice { slice: left, offset: PointerData::new(0, 0, sid) },
+            Slice {
+                slice: left,
+                offset: PointerData::new(0, 0, sid),
+            },
             unsafe { cur.get_unchecked_mut(0) },
-            Slice { slice: right, offset: PointerData::new(index+1, 0, sid) },
+            Slice {
+                slice: right,
+                offset: PointerData::new(index + 1, 0, sid),
+            },
         )
     }
 }
@@ -168,12 +174,15 @@ impl<T> fmt::Debug for Pointer<T> {
             pending: &'a Pending,
         }
 
-        Pointer {
-            index: self.data.get_index() as usize,
-            epoch: self.data.get_epoch() as usize,
-            storage_id: self.data.get_storage_id() as usize,
-            pending: &self.pending.lock(),
-        }.fmt(f)
+        fmt::Debug::fmt(
+            Pointer {
+                index: self.data.get_index() as usize,
+                epoch: self.data.get_epoch() as usize,
+                storage_id: self.data.get_storage_id() as usize,
+                pending: &self.pending.lock(),
+            },
+            f,
+        )
     }
 }
 
@@ -207,8 +216,10 @@ impl<'a, T> Clone for Iter<'a, T> {
 impl<T> PartialOrd for Pointer<T> {
     fn partial_cmp(&self, other: &Pointer<T>) -> Option<std::cmp::Ordering> {
         if self.data.get_storage_id() == other.data.get_storage_id() {
-            debug_assert!(self.data.get_index() != other.data.get_index() ||
-                self.data.get_epoch() == self.data.get_epoch());
+            debug_assert!(
+                self.data.get_index() != other.data.get_index()
+                    || self.data.get_epoch() == self.data.get_epoch()
+            );
             self.data.get_index().partial_cmp(&other.data.get_index())
         } else {
             None
@@ -235,7 +246,6 @@ pub struct Cursor<'a, T: 'a> {
     storage_id: StorageId,
 }
 
-
 impl<'a, T> ops::Index<&'a Pointer<T>> for Storage<T> {
     type Output = T;
     #[inline]
@@ -256,7 +266,10 @@ impl<'a, T> ops::IndexMut<&'a Pointer<T>> for Storage<T> {
 }
 
 impl<T> FromIterator<T> for Storage<T> {
-    fn from_iter<I>(iter: I) -> Self where I: IntoIterator<Item=T> {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = T>,
+    {
         let data: Vec<T> = iter.into_iter().collect();
         let count = data.len();
         Storage::new_impl(data, vec![0; count], vec![0; count])
@@ -313,7 +326,8 @@ impl<T> Storage<T> {
         Self::new_impl(
             Vec::with_capacity(capacity),
             Vec::with_capacity(capacity),
-            Vec::with_capacity(capacity))
+            Vec::with_capacity(capacity),
+        )
     }
 
     /// Synchronize for all the pending updates.
@@ -322,8 +336,7 @@ impl<T> Storage<T> {
     /// [`iter_alive_mut`](struct.Storage.html#method.iter_alive_mut) will return actual information.
     ///
     /// Use this function only if necessary, because it needs to block Storage.
-    pub fn sync_pending(&mut self)
-    {
+    pub fn sync_pending(&mut self) {
         let mut pending = self.pending.lock();
         // missing epochs
         while pending.epoch.len() < self.inner.data.len() {
@@ -397,11 +410,7 @@ impl<T> Storage<T> {
         let mut pending = self.pending.lock();
         pending.add_ref.push(item.index);
         Pointer {
-            data: PointerData::new(
-                item.index,
-                pending.get_epoch(item.index),
-                self.id,
-            ),
+            data: PointerData::new(item.index, pending.get_epoch(item.index), self.id),
             pending: self.pending.clone(),
             marker: PhantomData,
         }
@@ -452,14 +461,14 @@ impl<T> Storage<T> {
                 self.inner.data[i] = value;
                 self.inner.meta[i] = 1;
                 data
-            },
+            }
             None => {
                 let i = self.inner.meta.len();
                 debug_assert_eq!(self.inner.data.len(), i);
                 self.inner.data.push(value);
                 self.inner.meta.push(1);
                 PointerData::new(i, 0, self.id)
-            },
+            }
         };
         Pointer {
             data,
@@ -474,7 +483,6 @@ impl<T> Default for Storage<T> {
         Self::new()
     }
 }
-
 
 impl<T> Clone for Pointer<T> {
     #[inline]
@@ -530,14 +538,14 @@ impl<'a, T> Iterator for Iter<'a, T> {
         loop {
             let id = self.index;
             if id >= self.storage.data.len() {
-                return None
+                return None;
             }
             self.index += 1;
-            if !self.skip_lost || unsafe {*self.storage.meta.get_unchecked(id)} != 0 {
+            if !self.skip_lost || unsafe { *self.storage.meta.get_unchecked(id) } != 0 {
                 return Some(Item {
                     value: unsafe { self.storage.data.get_unchecked(id) },
                     index: id,
-                })
+                });
             }
         }
     }

@@ -1,13 +1,13 @@
 #![feature(test)]
 
-extern crate test;
 extern crate froggy;
+extern crate test;
 
-use test::Bencher;
 use froggy::{Pointer, Storage};
+use test::Bencher;
 
 mod bench_setup;
-use bench_setup::{Position, N_POS_VEL, N_POS};
+use bench_setup::{Position, N_POS, N_POS_VEL};
 
 // Since component linking is not used in this bench,
 // it has a custom Velocity component
@@ -38,19 +38,17 @@ fn build() -> World {
     {
         let pos_spread = (N_POS + N_POS_VEL) / N_POS_VEL;
 
-        for fx in 1 .. (N_POS_VEL + N_POS + 1) {
+        for fx in 1..(N_POS_VEL + N_POS + 1) {
             world.entities.push(Entity {
                 pos: world.pos.create(Position { x: 0.0, y: 0.0 }),
                 vel: None,
-
             });
             if fx % pos_spread == 0 {
                 world.entities.push(Entity {
-                pos: world.pos.create(Position { x: 0.0, y: 0.0 }),
-                vel: Some(world.vel.create(Velocity { dx: 0.0, dy: 0.0 })),
+                    pos: world.pos.create(Position { x: 0.0, y: 0.0 }),
+                    vel: Some(world.vel.create(Velocity { dx: 0.0, dy: 0.0 })),
                 });
             }
-
         }
     }
 

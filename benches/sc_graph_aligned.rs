@@ -1,16 +1,16 @@
 #![feature(test)]
 
-extern crate test;
 extern crate froggy;
+extern crate test;
 
-use test::Bencher;
 use froggy::{Pointer, Storage};
+use test::Bencher;
 
 mod bench_setup;
-use bench_setup::{Position, Velocity, N_POS_VEL, N_POS};
+use bench_setup::{Position, Velocity, N_POS, N_POS_VEL};
 
 struct Movement {
-	pub vel_comp: Vec<Pointer<Velocity>>,
+    pub vel_comp: Vec<Pointer<Velocity>>,
 }
 
 struct World {
@@ -20,22 +20,26 @@ struct World {
 }
 
 fn build() -> World {
-
     let mut world = World {
         pos: Storage::with_capacity(N_POS_VEL + N_POS),
         vel: Storage::with_capacity(N_POS_VEL),
-        movement: Movement{ vel_comp: Vec::new() },
+        movement: Movement {
+            vel_comp: Vec::new(),
+        },
     };
 
-
     {
-        for _ in 0 .. N_POS_VEL {
+        for _ in 0..N_POS_VEL {
             let pos_ptr = world.pos.create(Position { x: 0.0, y: 0.0 });
-	    	let v = Velocity { dx: 0.0, dy: 0.0, writes: pos_ptr};
-	        world.movement.vel_comp.push(world.vel.create(v));
+            let v = Velocity {
+                dx: 0.0,
+                dy: 0.0,
+                writes: pos_ptr,
+            };
+            world.movement.vel_comp.push(world.vel.create(v));
         }
 
-        for _ in 0 .. N_POS {
+        for _ in 0..N_POS {
             world.pos.create(Position { x: 0.0, y: 0.0 });
         }
     }

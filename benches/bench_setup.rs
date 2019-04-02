@@ -19,4 +19,3 @@ pub struct Velocity {
     pub dy: f32,
     pub writes: Pointer<Position>,
 }
-

@@ -27,8 +27,11 @@ impl PointerData {
     #[inline]
     pub fn new(index: Index, epoch: Epoch, storage: StorageId) -> Self {
         debug_assert_eq!(index >> INDEX_BITS, 0);
-        PointerData(index as u64 + ((u64::from(epoch)) << EPOCH_OFFSET) +
-            ((u64::from(storage)) << STORAGE_ID_OFFSET))
+        PointerData(
+            index as u64
+                + ((u64::from(epoch)) << EPOCH_OFFSET)
+                + ((u64::from(storage)) << STORAGE_ID_OFFSET),
+        )
     }
 
     #[inline]

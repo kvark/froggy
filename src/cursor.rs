@@ -1,7 +1,6 @@
-use {Cursor, PendingRef, Pointer, PointerData, Slice};
 use std::marker::PhantomData;
 use std::ops;
-
+use {Cursor, PendingRef, Pointer, PointerData, Slice};
 
 impl<'a, T> Slice<'a, T> {
     /// Check if the slice contains no elements.
@@ -13,7 +12,10 @@ impl<'a, T> Slice<'a, T> {
     /// is outside of the slice.
     pub fn get(&'a self, pointer: &Pointer<T>) -> Option<&'a T> {
         debug_assert_eq!(pointer.data.get_storage_id(), self.offset.get_storage_id());
-        let index = pointer.data.get_index().wrapping_sub(self.offset.get_index());
+        let index = pointer
+            .data
+            .get_index()
+            .wrapping_sub(self.offset.get_index());
         self.slice.get(index as usize)
     }
 
@@ -21,7 +23,10 @@ impl<'a, T> Slice<'a, T> {
     /// is outside of the slice.
     pub fn get_mut(&'a mut self, pointer: &Pointer<T>) -> Option<&'a mut T> {
         debug_assert_eq!(pointer.data.get_storage_id(), self.offset.get_storage_id());
-        let index = pointer.data.get_index().wrapping_sub(self.offset.get_index());
+        let index = pointer
+            .data
+            .get_index()
+            .wrapping_sub(self.offset.get_index());
         self.slice.get_mut(index as usize)
     }
 }
@@ -118,7 +123,8 @@ impl<'a, T> Cursor<'a, T> {
         let data = PointerData::new(index, 0, self.storage_id);
         let (left, item, right) = self.storage.split(data);
         let item = CursorItem {
-            item, data,
+            item,
+            data,
             pending: self.pending,
         };
         (left, item, right)
@@ -133,7 +139,7 @@ impl<'a, T> Cursor<'a, T> {
                 None => {
                     self.index = id; // prevent the bump of the index
                     return None;
-                },
+                }
                 Some(&0) => (),
                 Some(_) => return Some(self.split(id)),
             }
@@ -144,7 +150,7 @@ impl<'a, T> Cursor<'a, T> {
     pub fn prev(&mut self) -> Option<(Slice<T>, CursorItem<T>, Slice<T>)> {
         loop {
             if self.index == 0 {
-                return None
+                return None;
             }
             self.index -= 1;
             let id = self.index;
