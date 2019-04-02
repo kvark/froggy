@@ -21,24 +21,27 @@ However, CGS has a number of advantages:
 #![warn(missing_docs)]
 #![doc(html_root_url = "https://docs.rs/froggy/0.4.4")]
 
-extern crate spin;
-
 mod bitfield;
 mod cursor;
 mod weak;
 
-use bitfield::PointerData;
+use crate::bitfield::PointerData;
 use spin::Mutex;
-use std::hash::{Hash, Hasher};
-use std::iter::FromIterator;
-use std::marker::PhantomData;
-use std::sync::atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT};
-use std::sync::Arc;
-use std::vec::Drain;
-use std::{fmt, ops, slice};
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    iter::FromIterator,
+    marker::PhantomData,
+    ops, slice,
+    sync::{
+        atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT},
+        Arc,
+    },
+    vec::Drain,
+};
 
-pub use cursor::CursorItem;
-pub use weak::WeakPointer;
+pub use crate::cursor::CursorItem;
+pub use crate::weak::WeakPointer;
 
 type Index = usize;
 
@@ -175,7 +178,7 @@ impl<T> fmt::Debug for Pointer<T> {
         }
 
         fmt::Debug::fmt(
-            Pointer {
+            &Pointer {
                 index: self.data.get_index() as usize,
                 epoch: self.data.get_epoch() as usize,
                 storage_id: self.data.get_storage_id() as usize,

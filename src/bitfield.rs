@@ -1,4 +1,4 @@
-use {Epoch, Index, StorageId};
+use crate::{Epoch, Index, StorageId};
 
 #[derive(Copy, Clone, Debug, PartialEq, Hash)]
 pub struct PointerData(u64);

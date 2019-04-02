@@ -1,5 +1,3 @@
-extern crate froggy;
-
 use froggy::{Pointer, Storage, WeakPointer};
 
 #[test]

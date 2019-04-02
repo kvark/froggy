@@ -1,6 +1,6 @@
+use crate::{Cursor, PendingRef, Pointer, PointerData, Slice};
 use std::marker::PhantomData;
 use std::ops;
-use {Cursor, PendingRef, Pointer, PointerData, Slice};
 
 impl<'a, T> Slice<'a, T> {
     /// Check if the slice contains no elements.

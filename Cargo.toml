@@ -17,6 +17,7 @@ It aims to combine the convenience of composition-style Object-Oriented Programm
 with the performance close to Entity-Component Systems.
 """
 readme = "README.md"
+edition = "2018"
 
 [workspace]
 members = ["demos/cubes"]
