@@ -17,7 +17,7 @@ fn main() {
         value: 0,
     });
     // initialize the other ones
-    for _ in 0 .. 10 {
+    for _ in 0..10 {
         let next = storage.create(Fibbo {
             prev: vec![first, second.clone()],
             value: 0,
@@ -29,9 +29,11 @@ fn main() {
     let mut cursor = storage.cursor();
     cursor.next().unwrap(); //skip first
     while let Some((left, mut item, _)) = cursor.next() {
-        item.value = item.prev.iter().map(|prev|
-            left.get(prev).unwrap().value
-            ).sum();
+        item.value = item
+            .prev
+            .iter()
+            .map(|prev| left.get(prev).unwrap().value)
+            .sum();
         println!("{}", item.value);
     }
 }

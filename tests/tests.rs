@@ -1,5 +1,3 @@
-extern crate froggy;
-
 use froggy::{Pointer, Storage, WeakPointer};
 
 #[test]
@@ -24,8 +22,7 @@ fn change_by_pointer() {
 
 #[test]
 fn iterating() {
-    let storage: Storage<_> =
-        [5 as i32, 7, 4, 6, 7].iter().cloned().collect();
+    let storage: Storage<_> = [5 as i32, 7, 4, 6, 7].iter().cloned().collect();
     assert_eq!(storage.iter_all().count(), 5);
     assert_eq!(*storage.iter_all().nth(0).unwrap(), 5);
     assert_eq!(*storage.iter_all().nth(1).unwrap(), 7);
@@ -34,7 +31,7 @@ fn iterating() {
 
 #[test]
 fn iter_zombies() {
-    let storage: Storage<_> = (0 .. 5).map(|i| i*3 as i32).collect();
+    let storage: Storage<_> = (0..5).map(|i| i * 3 as i32).collect();
     assert_eq!(storage.iter().count(), 0);
     assert_eq!(storage.iter_all().count(), 5);
 }
@@ -67,8 +64,7 @@ fn weak_epoch() {
 #[test]
 fn cursor() {
     let data = vec![5 as i32, 7, 4, 6, 7];
-    let mut storage: Storage<_> =
-        data.iter().cloned().collect();
+    let mut storage: Storage<_> = data.iter().cloned().collect();
 
     let mut cursor = storage.cursor();
     let mut iter = data.iter();

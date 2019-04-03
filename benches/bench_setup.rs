@@ -1,5 +1,3 @@
-extern crate froggy;
-
 use froggy::Pointer;
 
 /// Entities with velocity and position component.
@@ -19,4 +17,3 @@ pub struct Velocity {
     pub dy: f32,
     pub writes: Pointer<Position>,
 }
-

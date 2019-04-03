@@ -1,4 +1,4 @@
-use {Epoch, Index, StorageId};
+use crate::{Epoch, Index, StorageId};
 
 #[derive(Copy, Clone, Debug, PartialEq, Hash)]
 pub struct PointerData(u64);
@@ -27,28 +27,31 @@ impl PointerData {
     #[inline]
     pub fn new(index: Index, epoch: Epoch, storage: StorageId) -> Self {
         debug_assert_eq!(index >> INDEX_BITS, 0);
-        PointerData(index as u64 + ((epoch as u64) << EPOCH_OFFSET) +
-            ((storage as u64) << STORAGE_ID_OFFSET))
+        PointerData(
+            index as u64
+                + ((u64::from(epoch)) << EPOCH_OFFSET)
+                + ((u64::from(storage)) << STORAGE_ID_OFFSET),
+        )
     }
 
     #[inline]
-    pub fn get_index(&self) -> Index {
+    pub fn get_index(self) -> Index {
         (self.0 & INDEX_MASK) as Index
     }
 
     #[inline]
-    pub fn get_epoch(&self) -> Epoch {
+    pub fn get_epoch(self) -> Epoch {
         ((self.0 & EPOCH_MASK) >> EPOCH_OFFSET) as Epoch
     }
 
     #[inline]
-    pub fn get_storage_id(&self) -> StorageId {
+    pub fn get_storage_id(self) -> StorageId {
         ((self.0 & STORAGE_ID_MASK) >> STORAGE_ID_OFFSET) as StorageId
     }
 
     #[inline]
-    pub fn with_epoch(&self, epoch: Epoch) -> PointerData {
-        PointerData((self.0 & !EPOCH_MASK) + ((epoch as u64) << EPOCH_OFFSET))
+    pub fn with_epoch(self, epoch: Epoch) -> PointerData {
+        PointerData((self.0 & !EPOCH_MASK) + ((u64::from(epoch)) << EPOCH_OFFSET))
     }
 }
 

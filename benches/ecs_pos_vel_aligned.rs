@@ -1,13 +1,8 @@
-#![feature(test)]
-
-extern crate test;
-extern crate froggy;
-
-use test::Bencher;
+use criterion::{criterion_group, criterion_main, Criterion};
 use froggy::{Pointer, Storage};
 
 mod bench_setup;
-use bench_setup::{Position, N_POS_VEL, N_POS};
+use bench_setup::{Position, N_POS, N_POS_VEL};
 
 // Since component linking is not used in this bench,
 // it has a custom Velocity component
@@ -36,13 +31,13 @@ fn build() -> World {
 
     // setup entities
     {
-        for _ in 0 .. N_POS_VEL {
+        for _ in 0..N_POS_VEL {
             world.entities.push(Entity {
                 pos: world.pos.create(Position { x: 0.0, y: 0.0 }),
                 vel: Some(world.vel.create(Velocity { dx: 0.0, dy: 0.0 })),
             });
         }
-        for _ in 0 .. N_POS {
+        for _ in 0..N_POS {
             world.entities.push(Entity {
                 pos: world.pos.create(Position { x: 0.0, y: 0.0 }),
                 vel: None,
@@ -53,23 +48,26 @@ fn build() -> World {
     world
 }
 
-#[bench]
-fn bench_build(b: &mut Bencher) {
-    b.iter(build);
+fn bench_build(c: &mut Criterion) {
+    c.bench_function("build-ecs-aligned", |b| b.iter(|| build()));
 }
 
-#[bench]
-fn bench_update(b: &mut Bencher) {
+fn bench_update(c: &mut Criterion) {
     let mut world = build();
 
-    b.iter(|| {
-        for e in &world.entities {
-            if let Some(ref vel) = e.vel {
-                let mut p = &mut world.pos[&e.pos];
-                let v = &world.vel[vel];
-                p.x += v.dx;
-                p.y += v.dy;
+    c.bench_function("update-ecs-aligned", move |b| {
+        b.iter(|| {
+            for e in &world.entities {
+                if let Some(ref vel) = e.vel {
+                    let mut p = &mut world.pos[&e.pos];
+                    let v = &world.vel[vel];
+                    p.x += v.dx;
+                    p.y += v.dy;
+                }
             }
-        }
+        })
     });
 }
+
+criterion_group!(benches, bench_build, bench_update);
+criterion_main!(benches);

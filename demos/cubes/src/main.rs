@@ -5,15 +5,14 @@ extern crate gfx;
 extern crate gfx_window_glutin;
 extern crate glutin;
 
-use std::{time};
 use cgmath::{Angle, EuclideanSpace, One, Rotation3, Transform, Zero};
 use gfx::traits::{Device, Factory, FactoryExt};
-
+use std::time;
 
 pub type ColorFormat = gfx::format::Srgba8;
 pub type DepthFormat = gfx::format::DepthStencil;
 
-gfx_defines!{
+gfx_defines! {
     vertex Vertex {
         pos: [f32; 4] = "a_Pos",
         normal: [i8; 4] = "a_Normal",
@@ -48,10 +47,9 @@ fn vertex(x: i8, y: i8, z: i8, nx: i8, ny: i8, nz: i8) -> Vertex {
     }
 }
 
-
-fn create_geometry<R: gfx::Resources, F: gfx::Factory<R>>(factory: &mut F)
-                   -> (gfx::handle::Buffer<R, Vertex>, gfx::Slice<R>)
-{
+fn create_geometry<R: gfx::Resources, F: gfx::Factory<R>>(
+    factory: &mut F,
+) -> (gfx::handle::Buffer<R, Vertex>, gfx::Slice<R>) {
     let vertices = [
         // bottom
         vertex(1, 1, 0, 0, 0, -1),
@@ -86,17 +84,12 @@ fn create_geometry<R: gfx::Resources, F: gfx::Factory<R>>(factory: &mut F)
     ];
 
     let indices = [
-        0u16, 1, 2, 0, 2, 3,
-        4, 5, 6, 4, 6, 7,
-        8, 9, 10, 8, 10, 11,
-        12, 13, 14, 12, 14, 15,
-        16, 17, 18, 16, 18, 19,
-        20, 21, 22, 20, 22, 23,
+        0u16, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11, 12, 13, 14, 12, 14, 15, 16, 17,
+        18, 16, 18, 19, 20, 21, 22, 20, 22, 23,
     ];
 
     factory.create_vertex_buffer_with_slice(&vertices, &indices[..])
 }
-
 
 type Space = cgmath::Decomposed<cgmath::Vector3<f32>, cgmath::Quaternion<f32>>;
 
@@ -120,57 +113,61 @@ struct Cube {
     level: froggy::Pointer<Level>,
 }
 
-fn create_cubes(nodes: &mut froggy::Storage<Node>,
-                materials: &froggy::Storage<Material>,
-                levels: &froggy::Storage<Level>)
-                -> Vec<Cube>
-{
+fn create_cubes(
+    nodes: &mut froggy::Storage<Node>,
+    materials: &froggy::Storage<Material>,
+    levels: &froggy::Storage<Level>,
+) -> Vec<Cube> {
     let mut mat_iter = materials.iter_all();
     let mut lev_iter = levels.iter_all();
     let root_mat = mat_iter.next().unwrap();
     let root_lev = lev_iter.next().unwrap();
-    let mut list = vec![
-        Cube {
-            node: nodes.create(Node {
-                local: Space {
-                    disp: cgmath::Vector3::zero(),
-                    rot: cgmath::Quaternion::one(),
-                    scale: 2.0,
-                },
-                world: Space::one(),
-                parent: None,
-            }),
-            material: materials.pin(&root_mat),
-            level: levels.pin(&root_lev),
-        }
-    ];
+    let mut list = vec![Cube {
+        node: nodes.create(Node {
+            local: Space {
+                disp: cgmath::Vector3::zero(),
+                rot: cgmath::Quaternion::one(),
+                scale: 2.0,
+            },
+            world: Space::one(),
+            parent: None,
+        }),
+        material: materials.pin(&root_mat),
+        level: levels.pin(&root_lev),
+    }];
     struct Stack<'a> {
         parent: froggy::Pointer<Node>,
         mat_iter: froggy::Iter<'a, Material>,
         lev_iter: froggy::Iter<'a, Level>,
     }
-    let mut stack = vec![
-        Stack {
-            parent: list[0].node.clone(),
-            mat_iter,
-            lev_iter,
-        }
-    ];
+    let mut stack = vec![Stack {
+        parent: list[0].node.clone(),
+        mat_iter,
+        lev_iter,
+    }];
 
-    let axis = [cgmath::Vector3::unit_z(),
-                cgmath::Vector3::unit_x(), -cgmath::Vector3::unit_x(),
-                cgmath::Vector3::unit_y(), -cgmath::Vector3::unit_y()];
-    let children: Vec<_> = axis.iter().map(|&axe| {
-        Space {
-            disp: cgmath::vec3(0.0, 0.0, 1.0),
-            rot: cgmath::Quaternion::from_axis_angle(axe, cgmath::Rad::turn_div_4()),
-            scale: 1.0,
-        }.concat(&Space {
-            disp: cgmath::vec3(0.0, 0.0, 1.0),
-            rot: cgmath::Quaternion::one(),
-            scale: 0.4,
+    let axis = [
+        cgmath::Vector3::unit_z(),
+        cgmath::Vector3::unit_x(),
+        -cgmath::Vector3::unit_x(),
+        cgmath::Vector3::unit_y(),
+        -cgmath::Vector3::unit_y(),
+    ];
+    let children: Vec<_> = axis
+        .iter()
+        .map(|&axe| {
+            Space {
+                disp: cgmath::vec3(0.0, 0.0, 1.0),
+                rot: cgmath::Quaternion::from_axis_angle(axe, cgmath::Rad::turn_div_4()),
+                scale: 1.0,
+            }
+            .concat(&Space {
+                disp: cgmath::vec3(0.0, 0.0, 1.0),
+                rot: cgmath::Quaternion::one(),
+                scale: 0.4,
+            })
         })
-    }).collect();
+        .collect();
 
     while let Some(mut next) = stack.pop() {
         //HACK: materials are indexed the same way as levels
@@ -210,8 +207,7 @@ fn make_globals(camera_pos: cgmath::Point3<f32>, aspect: f32) -> Globals {
         let fovy = cgmath::Deg(60.0);
         let perspective = cgmath::perspective(fovy, aspect, 1.0, 100.0);
         let focus = cgmath::Point3::new(0.0, 0.0, 3.0);
-        let view = cgmath::Matrix4::look_at(
-            camera_pos, focus, cgmath::Vector3::unit_z());
+        let view = cgmath::Matrix4::look_at(camera_pos, focus, cgmath::Vector3::unit_z());
         perspective * view
     };
     Globals {
@@ -231,15 +227,15 @@ const COLORS: [[f32; 4]; 6] = [
     [1.0, 0.5, 1.0, 1.0],
 ];
 
-const SPEEDS: [f32; 6] = [
-    0.7, -1.0, 1.3, -1.6, 1.9, -2.2
-];
+const SPEEDS: [f32; 6] = [0.7, -1.0, 1.3, -1.6, 1.9, -2.2];
 
 fn main() {
     // feed Froggy
     let mut node_store = froggy::Storage::new();
-    let material_store: froggy::Storage<_> =
-        COLORS.iter().map(|&color| Material { color: color }).collect();
+    let material_store: froggy::Storage<_> = COLORS
+        .iter()
+        .map(|&color| Material { color: color })
+        .collect();
     let level_store: froggy::Storage<_> =
         SPEEDS.iter().map(|&speed| Level { speed: speed }).collect();
 
@@ -247,7 +243,11 @@ fn main() {
     // Thus, all will be lost if we lock for writing now, but locking for reading retains the
     // contents, and cube creation will add references to them, so they will stay alive.
     let mut cubes = create_cubes(&mut node_store, &material_store, &level_store);
-    println!("Initialized {} cubes on {} levels", cubes.len(), SPEEDS.len());
+    println!(
+        "Initialized {} cubes on {} levels",
+        cubes.len(),
+        SPEEDS.len()
+    );
 
     // init window and graphics
     let builder = glutin::WindowBuilder::new()
@@ -259,9 +259,14 @@ fn main() {
     let mut encoder = gfx::Encoder::from(factory.create_command_buffer());
 
     let (cube_vbuf, mut cube_slice) = create_geometry(&mut factory);
-    let cube_ibuf = factory.create_buffer(cubes.len(),
-        gfx::buffer::Role::Vertex, gfx::memory::Usage::Dynamic, gfx::Bind::empty()
-        ).unwrap();
+    let cube_ibuf = factory
+        .create_buffer(
+            cubes.len(),
+            gfx::buffer::Role::Vertex,
+            gfx::memory::Usage::Dynamic,
+            gfx::Bind::empty(),
+        )
+        .unwrap();
 
     // init global parameters
     let camera_pos = cgmath::Point3::new(-1.8, -8.0, 3.0);
@@ -273,11 +278,13 @@ fn main() {
     encoder.update_constant_buffer(&global_buf, &globals);
 
     // init pipeline states
-    let pso = factory.create_pipeline_simple(
-        include_bytes!("vert.glsl"),
-        include_bytes!("frag.glsl"),
-        pipe::new()
-        ).unwrap();
+    let pso = factory
+        .create_pipeline_simple(
+            include_bytes!("vert.glsl"),
+            include_bytes!("frag.glsl"),
+            pipe::new(),
+        )
+        .unwrap();
     let mut data = pipe::Data {
         vert_buf: cube_vbuf,
         inst_buf: cube_ibuf,
@@ -292,16 +299,20 @@ fn main() {
 
     while running {
         // process events
-        event_loop.poll_events(|glutin::Event::WindowEvent {event, ..}| {
+        event_loop.poll_events(|glutin::Event::WindowEvent { event, .. }| {
             use glutin::WindowEvent as Event;
             match event {
-                Event::KeyboardInput(_, _, Some(glutin::VirtualKeyCode::Escape), _) |
-                Event::Closed => running = false,
+                Event::KeyboardInput(_, _, Some(glutin::VirtualKeyCode::Escape), _)
+                | Event::Closed => running = false,
                 Event::Resized(width, height) => {
-                    gfx_window_glutin::update_views(&window, &mut data.out_color, &mut data.out_depth);
+                    gfx_window_glutin::update_views(
+                        &window,
+                        &mut data.out_color,
+                        &mut data.out_depth,
+                    );
                     let globals = make_globals(camera_pos, width as f32 / height as f32);
                     encoder.update_constant_buffer(&data.globals, &globals);
-                },
+                }
                 _ => (),
             }
         });
@@ -352,7 +363,9 @@ fn main() {
 
         // update instancing GPU info
         cube_slice.instances = Some((instances.len() as gfx::InstanceCount, 0));
-        encoder.update_buffer(&data.inst_buf, &instances, 0).unwrap();
+        encoder
+            .update_buffer(&data.inst_buf, &instances, 0)
+            .unwrap();
 
         // draw -- start
         encoder.clear_depth(&data.out_depth, 1.0);
