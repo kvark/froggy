@@ -1,6 +1,6 @@
+use std::{marker::PhantomData, ops};
+
 use crate::{Index, PendingRef, Pointer, PointerData, StorageId, StorageInner};
-use std::marker::PhantomData;
-use std::ops;
 
 /// A slice of a storage. Useful for cursor iteration.
 #[derive(Debug)]

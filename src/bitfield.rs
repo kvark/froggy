@@ -1,7 +1,7 @@
 use crate::{Epoch, Index, StorageId};
 
 #[derive(Copy, Clone, Debug, PartialEq, Hash)]
-pub struct PointerData(u64);
+pub(crate) struct PointerData(u64);
 
 #[cfg(target_pointer_width = "32")]
 const INDEX_BITS: u8 = 20;
