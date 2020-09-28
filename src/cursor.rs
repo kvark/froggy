@@ -1,6 +1,13 @@
-use crate::{Cursor, PendingRef, Pointer, PointerData, Slice};
+use crate::{Index, PendingRef, Pointer, PointerData, StorageId, StorageInner};
 use std::marker::PhantomData;
 use std::ops;
+
+/// A slice of a storage. Useful for cursor iteration.
+#[derive(Debug)]
+pub struct Slice<'a, T: 'a> {
+    pub(crate) slice: &'a mut [T],
+    pub(crate) offset: PointerData,
+}
 
 impl<'a, T> Slice<'a, T> {
     /// Check if the slice contains no elements.
@@ -82,6 +89,7 @@ impl<'a, T> Slice<'a, T> {
 /// # Ok(())
 /// # }
 /// # fn main() { try_main(); }
+/// ```
 #[derive(Debug)]
 pub struct CursorItem<'a, T: 'a> {
     item: &'a mut T,
@@ -116,6 +124,18 @@ impl<'a, T> CursorItem<'a, T> {
             marker: PhantomData,
         }
     }
+}
+
+/// Streaming iterator providing mutable components
+/// and a capability to look back/ahead.
+///
+/// See documentation of [`CursorItem`](struct.CursorItem.html).
+#[derive(Debug)]
+pub struct Cursor<'a, T: 'a> {
+    pub(crate) storage: &'a mut StorageInner<T>,
+    pub(crate) pending: &'a PendingRef,
+    pub(crate) index: Index,
+    pub(crate) storage_id: StorageId,
 }
 
 impl<'a, T> Cursor<'a, T> {
