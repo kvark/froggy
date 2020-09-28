@@ -2,13 +2,14 @@ use spin::Mutex;
 
 use std::{
     iter::FromIterator,
+    marker::PhantomData,
     ops, slice,
     sync::{atomic::Ordering, Arc},
 };
 
 use crate::{
-    Cursor, Epoch, Item, Iter, IterMut, Pending, PendingRef, PhantomData, Pointer, PointerData,
-    RefCount, Slice, StorageId, STORAGE_UID,
+    Cursor, Epoch, Index, Pending, PendingRef, Pointer, PointerData, RefCount, Slice, StorageId,
+    STORAGE_UID,
 };
 
 /// Inner storage data that is locked by `RwLock`.
@@ -293,5 +294,82 @@ impl<T> Storage<T> {
 impl<T> Default for Storage<T> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// The item of `Iter`.
+#[derive(Debug, Clone, Copy)]
+pub struct Item<'a, T: 'a> {
+    value: &'a T,
+    index: Index,
+}
+
+impl<'a, T> ops::Deref for Item<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        self.value
+    }
+}
+
+/// Iterator for reading components.
+#[derive(Debug)]
+pub struct Iter<'a, T: 'a> {
+    storage: &'a StorageInner<T>,
+    skip_lost: bool,
+    index: Index,
+}
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = Item<'a, T>;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let id = self.index;
+            if id >= self.storage.data.len() {
+                return None;
+            }
+            self.index += 1;
+            if !self.skip_lost || unsafe { *self.storage.meta.get_unchecked(id) } != 0 {
+                return Some(Item {
+                    value: unsafe { self.storage.data.get_unchecked(id) },
+                    index: id,
+                });
+            }
+        }
+    }
+}
+
+impl<'a, T> Clone for Iter<'a, T> {
+    fn clone(&self) -> Self {
+        Iter {
+            storage: self.storage,
+            skip_lost: self.skip_lost,
+            index: self.index,
+        }
+    }
+}
+
+/// Iterator for writing components.
+#[derive(Debug)]
+pub struct IterMut<'a, T: 'a> {
+    data: slice::IterMut<'a, T>,
+    meta: slice::Iter<'a, RefCount>,
+}
+
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(&0) = self.meta.next() {
+            self.data.next();
+        }
+        self.data.next()
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        while let Some(&0) = self.meta.next_back() {
+            self.data.next_back();
+        }
+        self.data.next_back()
     }
 }
