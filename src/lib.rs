@@ -34,7 +34,7 @@ use std::{
     marker::PhantomData,
     ops, slice,
     sync::{
-        atomic::{AtomicUsize, Ordering, ATOMIC_USIZE_INIT},
+        atomic::{AtomicUsize, Ordering},
         Arc,
     },
     vec::Drain,
@@ -54,7 +54,7 @@ type RefCount = u16;
 type Epoch = u16;
 
 type StorageId = u8;
-static STORAGE_UID: AtomicUsize = ATOMIC_USIZE_INIT;
+static STORAGE_UID: AtomicUsize = AtomicUsize::new(0);
 
 /// The error type which is returned from upgrading
 /// [`WeakPointer`](struct.WeakPointer.html).
